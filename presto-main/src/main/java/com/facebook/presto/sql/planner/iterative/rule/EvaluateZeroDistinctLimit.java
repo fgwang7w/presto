@@ -15,33 +15,29 @@ package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.matching.Captures;
 import com.facebook.presto.matching.Pattern;
+import com.facebook.presto.spi.plan.DistinctLimitNode;
 import com.facebook.presto.spi.plan.ValuesNode;
 import com.facebook.presto.sql.planner.iterative.Rule;
-import com.facebook.presto.sql.planner.plan.SampleNode;
 import com.google.common.collect.ImmutableList;
 
-import static com.facebook.presto.sql.planner.plan.Patterns.Sample.sampleRatio;
-import static com.facebook.presto.sql.planner.plan.Patterns.sample;
+import static com.facebook.presto.sql.planner.plan.Patterns.DistinctLimit.count;
+import static com.facebook.presto.sql.planner.plan.Patterns.distinctLimit;
 
-/**
- * Replaces 0% sample node with empty values node.
- */
-
-public class EvaluateZeroSample
-        implements Rule<SampleNode>
+public class EvaluateZeroDistinctLimit
+        implements Rule<DistinctLimitNode>
 {
-    private static final Pattern<SampleNode> PATTERN = sample()
-            .with(sampleRatio().equalTo(0.0));
+    private static final Pattern<DistinctLimitNode> PATTERN = distinctLimit()
+            .with(count().equalTo(0L));
 
     @Override
-    public Pattern<SampleNode> getPattern()
+    public Pattern<DistinctLimitNode> getPattern()
     {
         return PATTERN;
     }
 
     @Override
-    public Result apply(SampleNode sample, Captures captures, Context context)
+    public Result apply(DistinctLimitNode node, Captures captures, Context context)
     {
-        return Result.ofPlanNode(new ValuesNode(sample.getId(), sample.getOutputVariables(), ImmutableList.of()));
+        return Result.ofPlanNode(new ValuesNode(node.getId(), node.getOutputVariables(), ImmutableList.of()));
     }
 }

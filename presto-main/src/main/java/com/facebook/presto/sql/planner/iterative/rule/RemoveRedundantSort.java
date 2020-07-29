@@ -15,33 +15,29 @@ package com.facebook.presto.sql.planner.iterative.rule;
 
 import com.facebook.presto.matching.Captures;
 import com.facebook.presto.matching.Pattern;
-import com.facebook.presto.spi.plan.ValuesNode;
 import com.facebook.presto.sql.planner.iterative.Rule;
-import com.facebook.presto.sql.planner.plan.SampleNode;
-import com.google.common.collect.ImmutableList;
+import com.facebook.presto.sql.planner.plan.SortNode;
 
-import static com.facebook.presto.sql.planner.plan.Patterns.Sample.sampleRatio;
-import static com.facebook.presto.sql.planner.plan.Patterns.sample;
+import static com.facebook.presto.sql.planner.optimizations.QueryCardinalityUtil.isAtMostScalar;
+import static com.facebook.presto.sql.planner.plan.Patterns.sort;
 
-/**
- * Replaces 0% sample node with empty values node.
- */
-
-public class EvaluateZeroSample
-        implements Rule<SampleNode>
+public class RemoveRedundantSort
+        implements Rule<SortNode>
 {
-    private static final Pattern<SampleNode> PATTERN = sample()
-            .with(sampleRatio().equalTo(0.0));
+    private static final Pattern<SortNode> PATTERN = sort();
 
     @Override
-    public Pattern<SampleNode> getPattern()
+    public Pattern<SortNode> getPattern()
     {
         return PATTERN;
     }
 
     @Override
-    public Result apply(SampleNode sample, Captures captures, Context context)
+    public Result apply(SortNode node, Captures captures, Context context)
     {
-        return Result.ofPlanNode(new ValuesNode(sample.getId(), sample.getOutputVariables(), ImmutableList.of()));
+        if (isAtMostScalar(node.getSource(), context.getLookup())) {
+            return Result.ofPlanNode(node.getSource());
+        }
+        return Result.empty();
     }
 }

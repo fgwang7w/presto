@@ -51,7 +51,6 @@ public class TestEvaluateZeroLimit
                                                 ImmutableList.of(
                                                         constantExpressions(BIGINT, 1L, 10L),
                                                         constantExpressions(BIGINT, 2L, 11L))))))
-                // TODO: verify contents
                 .matches(values(ImmutableMap.of()));
     }
 }

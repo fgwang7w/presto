@@ -35,8 +35,10 @@ import com.facebook.presto.sql.planner.iterative.rule.DesugarTryExpression;
 import com.facebook.presto.sql.planner.iterative.rule.DetermineJoinDistributionType;
 import com.facebook.presto.sql.planner.iterative.rule.DetermineSemiJoinDistributionType;
 import com.facebook.presto.sql.planner.iterative.rule.EliminateCrossJoins;
+import com.facebook.presto.sql.planner.iterative.rule.EvaluateZeroDistinctLimit;
 import com.facebook.presto.sql.planner.iterative.rule.EvaluateZeroLimit;
 import com.facebook.presto.sql.planner.iterative.rule.EvaluateZeroSample;
+import com.facebook.presto.sql.planner.iterative.rule.EvaluateZeroTopN;
 import com.facebook.presto.sql.planner.iterative.rule.ExtractSpatialJoins;
 import com.facebook.presto.sql.planner.iterative.rule.GatherAndMergeWindows;
 import com.facebook.presto.sql.planner.iterative.rule.ImplementBernoulliSampleAsFilter;
@@ -87,7 +89,11 @@ import com.facebook.presto.sql.planner.iterative.rule.PushTableWriteThroughUnion
 import com.facebook.presto.sql.planner.iterative.rule.PushTopNThroughUnion;
 import com.facebook.presto.sql.planner.iterative.rule.RemoveEmptyDelete;
 import com.facebook.presto.sql.planner.iterative.rule.RemoveFullSample;
+import com.facebook.presto.sql.planner.iterative.rule.RemoveRedundantDistinctLimit;
 import com.facebook.presto.sql.planner.iterative.rule.RemoveRedundantIdentityProjections;
+import com.facebook.presto.sql.planner.iterative.rule.RemoveRedundantLimit;
+import com.facebook.presto.sql.planner.iterative.rule.RemoveRedundantSort;
+import com.facebook.presto.sql.planner.iterative.rule.RemoveRedundantTopN;
 import com.facebook.presto.sql.planner.iterative.rule.RemoveTrivialFilters;
 import com.facebook.presto.sql.planner.iterative.rule.RemoveUnreferencedScalarApplyNodes;
 import com.facebook.presto.sql.planner.iterative.rule.RemoveUnreferencedScalarLateralNodes;
@@ -178,20 +184,6 @@ public class PlanOptimizers
                 estimatedExchangesCostCalculator,
                 costComparator,
                 taskCountEstimator);
-    }
-
-    @PostConstruct
-    public void initialize()
-    {
-        ruleStats.export(exporter);
-        optimizerStats.export(exporter);
-    }
-
-    @PreDestroy
-    public void destroy()
-    {
-        ruleStats.unexport(exporter);
-        optimizerStats.unexport(exporter);
     }
 
     public PlanOptimizers(
@@ -289,11 +281,6 @@ public class PlanOptimizers
                         ruleStats,
                         statsCalculator,
                         estimatedExchangesCostCalculator,
-                        ImmutableSet.of(new EvaluateZeroLimit())),
-                new IterativeOptimizer(
-                        ruleStats,
-                        statsCalculator,
-                        estimatedExchangesCostCalculator,
                         ImmutableSet.<Rule<?>>builder()
                                 .addAll(predicatePushDownRules)
                                 .addAll(columnPruningRules)
@@ -301,6 +288,9 @@ public class PlanOptimizers
                                         new RemoveRedundantIdentityProjections(),
                                         new RemoveFullSample(),
                                         new EvaluateZeroSample(),
+                                        new EvaluateZeroLimit(),
+                                        new EvaluateZeroDistinctLimit(),
+                                        new EvaluateZeroTopN(),
                                         new PushLimitThroughProject(),
                                         new MergeLimits(),
                                         new MergeLimitWithSort(),
@@ -310,6 +300,10 @@ public class PlanOptimizers
                                         new PushLimitThroughSemiJoin(),
                                         new PushLimitThroughUnion(),
                                         new RemoveTrivialFilters(),
+                                        new RemoveRedundantLimit(),
+                                        new RemoveRedundantSort(),
+                                        new RemoveRedundantTopN(),
+                                        new RemoveRedundantDistinctLimit(),
                                         new ImplementFilteredAggregations(),
                                         new SingleDistinctAggregationToGroupBy(),
                                         new MultipleDistinctAggregationToMarkDistinct(),
@@ -447,7 +441,7 @@ public class PlanOptimizers
                         ImmutableSet.<Rule<?>>builder()
                                 .addAll(new PushDownDereferences(metadata).rules())
                                 .build()),
-                    new PruneUnreferencedOutputs());
+                new PruneUnreferencedOutputs());
 
         builder.add(new IterativeOptimizer(
                 ruleStats,
@@ -618,6 +612,20 @@ public class PlanOptimizers
                 ImmutableList.of(),
                 ImmutableSet.of(new RuntimeReorderJoinSides(metadata, sqlParser))));
         this.runtimeOptimizers = runtimeBuilder.build();
+    }
+
+    @PostConstruct
+    public void initialize()
+    {
+        ruleStats.export(exporter);
+        optimizerStats.export(exporter);
+    }
+
+    @PreDestroy
+    public void destroy()
+    {
+        ruleStats.unexport(exporter);
+        optimizerStats.unexport(exporter);
     }
 
     public List<PlanOptimizer> getPlanningTimeOptimizers()
