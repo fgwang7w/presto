@@ -203,14 +203,6 @@ public class Patterns
         return property("sources", PlanNode::getSources);
     }
 
-    public static class DistinctLimit
-    {
-        public static Property<DistinctLimitNode, Long> count()
-        {
-            return property("limit", DistinctLimitNode::getLimit);
-        }
-    }
-
     public static class Aggregation
     {
         public static Property<AggregationNode, List<VariableReferenceExpression>> groupingColumns()
@@ -258,6 +250,14 @@ public class Patterns
         public static Property<LimitNode, Long> count()
         {
             return property("count", LimitNode::getCount);
+        }
+    }
+
+    public static class DistinctLimit
+    {
+        public static Property<DistinctLimitNode, Long> count()
+        {
+            return property("limit", DistinctLimitNode::getLimit);
         }
     }
 

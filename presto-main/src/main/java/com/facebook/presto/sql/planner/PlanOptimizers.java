@@ -186,6 +186,20 @@ public class PlanOptimizers
                 taskCountEstimator);
     }
 
+    @PostConstruct
+    public void initialize()
+    {
+        ruleStats.export(exporter);
+        optimizerStats.export(exporter);
+    }
+
+    @PreDestroy
+    public void destroy()
+    {
+        ruleStats.unexport(exporter);
+        optimizerStats.unexport(exporter);
+    }
+
     public PlanOptimizers(
             Metadata metadata,
             SqlParser sqlParser,
@@ -441,7 +455,7 @@ public class PlanOptimizers
                         ImmutableSet.<Rule<?>>builder()
                                 .addAll(new PushDownDereferences(metadata).rules())
                                 .build()),
-                new PruneUnreferencedOutputs());
+                    new PruneUnreferencedOutputs());
 
         builder.add(new IterativeOptimizer(
                 ruleStats,
@@ -612,20 +626,6 @@ public class PlanOptimizers
                 ImmutableList.of(),
                 ImmutableSet.of(new RuntimeReorderJoinSides(metadata, sqlParser))));
         this.runtimeOptimizers = runtimeBuilder.build();
-    }
-
-    @PostConstruct
-    public void initialize()
-    {
-        ruleStats.export(exporter);
-        optimizerStats.export(exporter);
-    }
-
-    @PreDestroy
-    public void destroy()
-    {
-        ruleStats.unexport(exporter);
-        optimizerStats.unexport(exporter);
     }
 
     public List<PlanOptimizer> getPlanningTimeOptimizers()
