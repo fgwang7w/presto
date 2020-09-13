@@ -31,6 +31,7 @@ import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.Identifier;
 import com.facebook.presto.sql.tree.Insert;
 import com.facebook.presto.sql.tree.LikeClause;
+import com.facebook.presto.sql.tree.Limit;
 import com.facebook.presto.sql.tree.Property;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.Query;
@@ -221,12 +222,12 @@ public class QueryRewriter
                             querySpecification.getGroupBy(),
                             querySpecification.getHaving(),
                             querySpecification.getOrderBy(),
-                            Optional.of("0")),
+                            Optional.of(new Limit("0"))),
                     Optional.empty(),
                     Optional.empty());
         }
         else {
-            zeroRowQuery = new Query(query.getWith(), query.getQueryBody(), Optional.empty(), Optional.of("0"));
+            zeroRowQuery = new Query(query.getWith(), query.getQueryBody(), Optional.empty(), Optional.of(new Limit("0")));
         }
         return prestoAction.execute(zeroRowQuery, REWRITE, ResultSetConverter.DEFAULT).getMetadata();
     }

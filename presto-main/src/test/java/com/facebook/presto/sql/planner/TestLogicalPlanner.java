@@ -73,6 +73,7 @@ import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.expres
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.filter;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.functionCall;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.join;
+import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.limit;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.markDistinct;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.node;
 import static com.facebook.presto.sql.planner.assertions.PlanMatchPattern.output;
@@ -100,6 +101,7 @@ import static com.facebook.presto.sql.planner.plan.JoinNode.Type.INNER;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.LEFT;
 import static com.facebook.presto.sql.planner.plan.JoinNode.Type.RIGHT;
 import static com.facebook.presto.sql.tree.SortItem.NullOrdering.LAST;
+import static com.facebook.presto.sql.tree.SortItem.Ordering.ASCENDING;
 import static com.facebook.presto.sql.tree.SortItem.Ordering.DESCENDING;
 import static com.facebook.presto.tests.QueryTemplate.queryTemplate;
 import static com.facebook.presto.util.MorePredicates.isInstanceOfAny;
@@ -1142,5 +1144,30 @@ public class TestLogicalPlanner
                                                 "region",
                                                 ImmutableMap.of(
                                                         "REGION_REGIONKEY", "regionkey"))))));
+    }
+
+    @Test
+    public void testOrderByFetch()
+    {
+        assertPlan(
+                "SELECT * FROM nation ORDER BY name FETCH FIRST 2 ROWS ONLY",
+                anyTree(
+                        topN(
+                                2,
+                                ImmutableList.of(sort("NAME", ASCENDING, LAST)),
+                                tableScan("nation", ImmutableMap.of(
+                                        "NAME", "name")))));
+    }
+
+    @Test
+    public void testFetch()
+    {
+        assertPlan(
+                "SELECT * FROM nation FETCH FIRST 2 ROWS ONLY",
+                anyTree(
+                        limit(
+                                2,
+                                any(
+                                        tableScan("nation")))));
     }
 }
