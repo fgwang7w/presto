@@ -126,8 +126,8 @@ public class TestLimitQueryDeterminismAnalyzer
         assertAnalysis(prestoAction, "INSERT INTO test SELECT * FROM (SELECT * FROM source LIMIT 1000)", NOT_RUN);
 
         // LIMIT ALL clause
-        assertAnalysis(prestoAction, "INSERT INTO test SELECT * FROM source LIMIT all", NOT_RUN);
-        assertAnalysis(prestoAction, "CREATE TABLE test AS (WITH f AS (select * from g) ((SELECT * FROM source UNION ALL SELECT * FROM source LIMIT ALL)))", NOT_RUN);
+        assertAnalysis(prestoAction, "INSERT INTO test SELECT * FROM source LIMIT all", DETERMINISTIC);
+        assertAnalysis(prestoAction, "CREATE TABLE test AS (WITH f AS (select * from g) ((SELECT * FROM source UNION ALL SELECT * FROM source LIMIT ALL)))", DETERMINISTIC);
     }
 
     @Test

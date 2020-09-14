@@ -61,6 +61,7 @@ public class PredicateStitcher
                 node.getWith(),
                 (QueryBody) process(node.getQueryBody(), context),
                 node.getOrderBy(),
+                node.getOffset(),
                 node.getLimit());
     }
 
@@ -75,6 +76,7 @@ public class PredicateStitcher
                     node.getGroupBy(),
                     node.getHaving(),
                     node.getOrderBy(),
+                    node.getOffset(),
                     node.getLimit());
         }
         return node;
@@ -109,8 +111,9 @@ public class PredicateStitcher
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
 
-        return subquery(new Query(Optional.empty(), queryWithPredicateStitching, Optional.empty(), Optional.empty()));
+        return subquery(new Query(Optional.empty(), queryWithPredicateStitching, Optional.empty(), Optional.empty(), Optional.empty()));
     }
 }
