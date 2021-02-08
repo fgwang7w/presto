@@ -152,6 +152,7 @@ public class TestFeaturesConfig
                 .setWarnOnNoTableLayoutFilter("")
                 .setInlineSqlFunctions(true)
                 .setCheckAccessControlOnUtilizedColumnsOnly(false)
+                .setAllowIntersectToJoinTransformation(true)
                 .setAllowWindowOrderByLiterals(true));
     }
 
@@ -258,6 +259,7 @@ public class TestFeaturesConfig
                 .put("check-access-control-on-utilized-columns-only", "true")
                 .put("optimizer.skip-redundant-sort", "false")
                 .put("is-allow-window-order-by-literals", "false")
+                .put("allow-intersect-to-join-transformation", "false")
                 .build();
 
         FeaturesConfig expected = new FeaturesConfig()
@@ -360,6 +362,7 @@ public class TestFeaturesConfig
                 .setInlineSqlFunctions(false)
                 .setCheckAccessControlOnUtilizedColumnsOnly(true)
                 .setSkipRedundantSort(false)
+                .setAllowIntersectToJoinTransformation(false)
                 .setAllowWindowOrderByLiterals(false);
         assertFullMapping(properties, expected);
     }

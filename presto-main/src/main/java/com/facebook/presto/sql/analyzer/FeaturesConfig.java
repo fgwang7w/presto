@@ -173,6 +173,7 @@ public class FeaturesConfig
     private boolean checkAccessControlOnUtilizedColumnsOnly;
     private boolean skipRedundantSort = true;
     private boolean isAllowWindowOrderByLiterals = true;
+    private boolean isAllowIntersectToJoinTransformation = true;
 
     private String warnOnNoTableLayoutFilter = "";
 
@@ -1452,6 +1453,18 @@ public class FeaturesConfig
     public FeaturesConfig setInlineSqlFunctions(boolean inlineSqlFunctions)
     {
         this.inlineSqlFunctions = inlineSqlFunctions;
+        return this;
+    }
+
+    public boolean isAllowIntersectToJoinTransformation()
+    {
+        return isAllowIntersectToJoinTransformation;
+    }
+
+    @Config("allow-intersect-to-join-transformation")
+    public FeaturesConfig setAllowIntersectToJoinTransformation(boolean value)
+    {
+        this.isAllowIntersectToJoinTransformation = value;
         return this;
     }
 
