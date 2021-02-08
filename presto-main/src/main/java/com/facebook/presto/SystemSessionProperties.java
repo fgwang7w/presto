@@ -204,6 +204,7 @@ public final class SystemSessionProperties
     public static final String MATERIALIZED_VIEW_DATA_CONSISTENCY_ENABLED = "materialized_view_data_consistency_enabled";
     public static final String QUERY_OPTIMIZATION_WITH_MATERIALIZED_VIEW_ENABLED = "query_optimization_with_materialized_view_enabled";
     public static final String AGGREGATION_IF_TO_FILTER_REWRITE_ENABLED = "aggregation_if_to_filter_rewrite_enabled";
+    public static final String ALLOW_INTERSECT_TO_JOIN_TRANSFORMATION = "allow_intersect_to_join_transformation";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -1005,6 +1006,11 @@ public final class SystemSessionProperties
                         featuresConfig.isCheckAccessControlOnUtilizedColumnsOnly(),
                         false),
                 booleanProperty(
+                        ALLOW_INTERSECT_TO_JOIN_TRANSFORMATION,
+                        "Allow transformation of INTERSECT to JOIN",
+                        featuresConfig.isAllowIntersectToJoinTransformation(),
+                        false),
+                booleanProperty(
                         ALLOW_WINDOW_ORDER_BY_LITERALS,
                         "Allow ORDER BY literals in window functions",
                         featuresConfig.isAllowWindowOrderByLiterals(),
@@ -1779,6 +1785,11 @@ public final class SystemSessionProperties
     public static boolean isInlineSqlFunctions(Session session)
     {
         return session.getSystemProperty(INLINE_SQL_FUNCTIONS, Boolean.class);
+    }
+
+    public static boolean allowIntersectToJoinTransformation(Session session)
+    {
+        return session.getSystemProperty(ALLOW_INTERSECT_TO_JOIN_TRANSFORMATION, Boolean.class);
     }
 
     public static boolean isRemoteFunctionsEnabled(Session session)

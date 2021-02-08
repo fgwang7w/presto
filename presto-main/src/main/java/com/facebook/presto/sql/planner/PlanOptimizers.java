@@ -45,6 +45,7 @@ import com.facebook.presto.sql.planner.iterative.rule.ImplementFilteredAggregati
 import com.facebook.presto.sql.planner.iterative.rule.ImplementOffset;
 import com.facebook.presto.sql.planner.iterative.rule.InlineProjections;
 import com.facebook.presto.sql.planner.iterative.rule.InlineSqlFunctions;
+import com.facebook.presto.sql.planner.iterative.rule.IntersectToJoinTransformation;
 import com.facebook.presto.sql.planner.iterative.rule.MergeFilters;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithDistinct;
 import com.facebook.presto.sql.planner.iterative.rule.MergeLimitWithSort;
@@ -111,6 +112,7 @@ import com.facebook.presto.sql.planner.iterative.rule.TransformCorrelatedScalarA
 import com.facebook.presto.sql.planner.iterative.rule.TransformCorrelatedScalarSubquery;
 import com.facebook.presto.sql.planner.iterative.rule.TransformCorrelatedSingleRowSubqueryToProject;
 import com.facebook.presto.sql.planner.iterative.rule.TransformExistsApplyToLateralNode;
+import com.facebook.presto.sql.planner.iterative.rule.TransformIntersectToJoin;
 import com.facebook.presto.sql.planner.iterative.rule.TransformUncorrelatedInPredicateSubqueryToSemiJoin;
 import com.facebook.presto.sql.planner.iterative.rule.TransformUncorrelatedLateralToJoin;
 import com.facebook.presto.sql.planner.iterative.rule.TranslateExpressions;
@@ -343,8 +345,11 @@ public class PlanOptimizers
                         ruleStats,
                         statsCalculator,
                         estimatedExchangesCostCalculator,
-                        ImmutableSet.of(new RemoveRedundantIdentityProjections())),
+                        ImmutableSet.of(
+                                new RemoveRedundantIdentityProjections(),
+                                new IntersectToJoinTransformation())),
                 new SetFlatteningOptimizer(),
+                new TransformIntersectToJoin(),
                 new ImplementIntersectAndExceptAsUnion(metadata.getFunctionAndTypeManager()),
                 new LimitPushDown(), // Run the LimitPushDown after flattening set operators to make it easier to do the set flattening
                 new PruneUnreferencedOutputs(),

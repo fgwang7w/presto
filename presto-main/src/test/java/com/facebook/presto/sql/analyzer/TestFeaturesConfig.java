@@ -178,6 +178,7 @@ public class TestFeaturesConfig
                 .setPartialResultsMaxExecutionTimeMultiplier(2.0)
                 .setMaterializedViewDataConsistencyEnabled(true)
                 .setQueryOptimizationWithMaterializedViewEnabled(false)
+                .setAllowIntersectToJoinTransformation(true)
                 .setAggregationIfToFilterRewriteEnabled(true));
     }
 
@@ -308,6 +309,7 @@ public class TestFeaturesConfig
                 .put("offset-clause-enabled", "true")
                 .put("materialized-view-data-consistency-enabled", "false")
                 .put("query-optimization-with-materialized-view-enabled", "true")
+                .put("allow-intersect-to-join-transformation", "false")
                 .put("optimizer.aggregation-if-to-filter-rewrite-enabled", "false")
                 .build();
 
@@ -436,6 +438,7 @@ public class TestFeaturesConfig
                 .setPartialResultsMaxExecutionTimeMultiplier(1.5)
                 .setMaterializedViewDataConsistencyEnabled(false)
                 .setQueryOptimizationWithMaterializedViewEnabled(true)
+                .setAllowIntersectToJoinTransformation(false)
                 .setAggregationIfToFilterRewriteEnabled(false);
         assertFullMapping(properties, expected);
     }
