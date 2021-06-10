@@ -18,11 +18,14 @@ import com.facebook.presto.common.type.Type;
 import com.facebook.presto.connector.system.GlobalSystemConnector;
 import com.facebook.presto.execution.QueryManagerConfig.ExchangeMaterializationStrategy;
 import com.facebook.presto.metadata.Metadata;
+import com.facebook.presto.metadata.TableLayout;
+import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.GroupingProperty;
 import com.facebook.presto.spi.LocalProperty;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SortingProperty;
+import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
 import com.facebook.presto.spi.plan.AggregationNode;
@@ -83,6 +86,7 @@ import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.ListMultimap;
+import com.google.common.collect.Lists;
 import com.google.common.collect.SetMultimap;
 
 import java.util.ArrayList;
@@ -139,6 +143,8 @@ import static com.facebook.presto.sql.planner.plan.ExchangeNode.mergingExchange;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.partitionedExchange;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.replicatedExchange;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.roundRobinExchange;
+import static com.facebook.presto.sql.planner.plan.JoinNode.Type.FULL;
+import static com.facebook.presto.sql.planner.plan.JoinNode.Type.RIGHT;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
@@ -764,6 +770,18 @@ public class AddExchanges
 
             JoinNode.DistributionType distributionType = node.getDistributionType().orElseThrow(() -> new IllegalArgumentException("distributionType not yet set"));
 
+            /** Overall Processing sequence:
+             * 1. Handle join with replicated / dim tables ( handle INNER, LEFT< RIGHT, FULL join requires repartition)
+             * 2. Handle general case when no dim tables are involved
+             */
+            // Special handle for replicated / dim tables
+            if (isReplicated(node.getBuild()) || isReplicated(node.getProbe())) {
+                // This optimization requires CBO to turn on. User requires to collect stats to ensure optimizer makes the optimal decision on removing exchange op
+                // JOIN_MAX_BROADCAST_TABLE_SIZE is required to determine the estimate table size that can be broadcast for JOIN.
+                // Note: by default JOIN_MAX_BROADCAST_TABLE_SIZE is unset, it is recommended to configure this threshold to limit 1M rows
+                return planReplicatedDimJoin(node);
+            }
+            // general case
             if (distributionType == JoinNode.DistributionType.REPLICATED) {
                 PlanWithProperties left = node.getLeft().accept(this, PreferredProperties.any());
 
@@ -777,6 +795,108 @@ public class AddExchanges
             }
             else {
                 return planPartitionedJoin(node, leftVariables, rightVariables);
+            }
+        }
+
+        private PlanWithProperties planReplicatedDimJoin(JoinNode joinNode)
+        {
+            JoinNode.DistributionType distributionType;
+
+            JoinNode.Type joinNodeType = joinNode.getType();
+            List<VariableReferenceExpression> leftVariables = Lists.transform(joinNode.getCriteria(), JoinNode.EquiJoinClause::getLeft);
+            List<VariableReferenceExpression> rightVariables = Lists.transform(joinNode.getCriteria(), JoinNode.EquiJoinClause::getRight);
+            SetMultimap<VariableReferenceExpression, VariableReferenceExpression> rightToLeft = createMapping(rightVariables, leftVariables);
+            SetMultimap<VariableReferenceExpression, VariableReferenceExpression> leftToRight = createMapping(leftVariables, rightVariables);
+
+            PlanWithProperties probe = joinNode.getLeft().accept(this, PreferredProperties.partitioned(ImmutableSet.copyOf(leftVariables)));
+            PlanWithProperties build = joinNode.getRight().accept(this, PreferredProperties.partitioned(ImmutableSet.copyOf(rightVariables)));
+
+            if (joinNodeType== JoinNode.Type.INNER) {
+                /**
+                 * for INNER join, co-located join is allowed if this is not a cross-join;
+                 * cross join requires to broadcast the small side unless the build side is already a replicated table
+                 */
+                if (!joinNode.isCrossJoin() ||
+                        (joinNode.isCrossJoin() && isReplicated(joinNode.getBuild()))) {
+                    distributionType = JoinNode.DistributionType.REPLICATED;
+
+                    // if any side of join is a single/gather node, we need to repartition it so it can join with the other replicated side
+                    if (probe.getProperties().isSingleNode() && !isReplicated(joinNode.getProbe()) && !build.getProperties().isSingleNode()) {
+                        Partitioning probePartitioning = build.getProperties().translateVariable(createTranslator(rightToLeft)).getNodePartitioning().get();
+                        probe = withDerivedProperties(
+                                partitionedExchange(
+                                        idAllocator.getNextId(),
+                                        selectExchangeScopeForPartitionedRemoteExchange(probe.getNode(), false),
+                                        probe.getNode(),
+                                        new PartitioningScheme(probePartitioning, probe.getNode().getOutputVariables())),
+                                probe.getProperties());
+                    }
+                    else if (build.getProperties().isSingleNode() && !isReplicated(joinNode.getBuild()) && !probe.getProperties().isSingleNode()) {
+                        Partitioning buildPartitioning = probe.getProperties().translateVariable(createTranslator(leftToRight)).getNodePartitioning().get();
+                        build = withDerivedProperties(
+                                partitionedExchange(
+                                        idAllocator.getNextId(),
+                                        selectExchangeScopeForPartitionedRemoteExchange(build.getNode(), false),
+                                        build.getNode(),
+                                        new PartitioningScheme(buildPartitioning, build.getNode().getOutputVariables())),
+                                build.getProperties());
+                    }
+                    return buildJoin(joinNode, probe, build, distributionType);
+                }
+            }
+            else if (joinNodeType == JoinNode.Type.LEFT) {
+                /**
+                 * for LEFT join, co-located join is allowed only if both sides are replicated/dim tables;
+                 * otherwise, we must use repartition on the dim table to ensure correct result
+                 * TODO: to be implemented
+                 */
+            }
+            else if (joinNodeType == RIGHT)
+            {
+                /**
+                 * for RIGHT join, co-located join is allowed only if both sides are replicated/dim tables;
+                 * otehrwise, we must repartition one side of join leg, or repartition both sides
+                 * TODO: to be implemented
+                 */
+
+            }
+            else if (joinNodeType == FULL)
+            {
+                /**
+                 * for FULL join, co-located join is allowed only if both sides are replicated/dim tables;
+                 * otherwise, we must repartition on replicated table to ensure correct result
+                 * TODO: to be implemented
+                 */
+            }
+            return buildJoin(joinNode, probe, build, joinNode.getDistributionType().get());
+        }
+
+        private boolean isReplicated(PlanNode node)
+        {
+            if (node instanceof ProjectNode) {
+                return isReplicated(((ProjectNode) node).getSource());
+            }
+            else if (node instanceof FilterNode) {
+                return isReplicated(((FilterNode) node).getSource());
+            }
+            return (node instanceof TableScanNode) && isDimSource((TableScanNode) node);
+        }
+
+        private boolean isDimSource(TableScanNode tableScanNode)
+        {
+            TableHandle tableHandle = tableScanNode.getTable();
+            if (!tableHandle.getLayout().isPresent()) {
+                return false;
+            }
+
+            TableLayout layout = metadata.getLayout(session, tableScanNode.getTable());
+            Optional<Set<ColumnHandle>> streamPartitioning = layout.getStreamPartitioningColumns();
+
+            if (streamPartitioning.isPresent()) {
+                return false;
+            }
+            else {
+                return true;
             }
         }
 
