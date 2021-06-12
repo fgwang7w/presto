@@ -72,6 +72,7 @@ public class FeaturesConfig
     private boolean distributedIndexJoinsEnabled;
     private JoinDistributionType joinDistributionType = PARTITIONED;
     private DataSize joinMaxBroadcastTableSize;
+    private DataSize colocatedJoinForMaxReplicateTableSize = new DataSize(100, MEGABYTE);
     private boolean colocatedJoinsEnabled = true;
     private boolean groupedExecutionEnabled = true;
     private boolean recoverableGroupedExecutionEnabled;
@@ -452,6 +453,18 @@ public class FeaturesConfig
     public FeaturesConfig setJoinMaxBroadcastTableSize(DataSize joinMaxBroadcastTableSize)
     {
         this.joinMaxBroadcastTableSize = joinMaxBroadcastTableSize;
+        return this;
+    }
+
+    public DataSize getColocatedJoinForMaxReplicateTableSize()
+    {
+        return colocatedJoinForMaxReplicateTableSize;
+    }
+
+    @Config("colocated_join_for_max_replicate_table_size")
+    public FeaturesConfig setColocatedJoinForMaxReplicateTableSize(DataSize colocatedJoinForMaxReplicateTableSize)
+    {
+        this.colocatedJoinForMaxReplicateTableSize = colocatedJoinForMaxReplicateTableSize;
         return this;
     }
 

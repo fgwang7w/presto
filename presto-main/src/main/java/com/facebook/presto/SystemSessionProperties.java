@@ -108,6 +108,7 @@ public final class SystemSessionProperties
     public static final String SPATIAL_JOIN = "spatial_join";
     public static final String SPATIAL_PARTITIONING_TABLE_NAME = "spatial_partitioning_table_name";
     public static final String COLOCATED_JOIN = "colocated_join";
+    public static final String COLOCATED_JOIN_FOR_MAX_REPLICATE_TABLE_SIZE = "colocated_join_for_max_replicate_table_size";
     public static final String CONCURRENT_LIFESPANS_PER_NODE = "concurrent_lifespans_per_task";
     public static final String REORDER_JOINS = "reorder_joins";
     public static final String JOIN_REORDERING_STRATEGY = "join_reordering_strategy";
@@ -256,6 +257,15 @@ public final class SystemSessionProperties
                         VARCHAR,
                         DataSize.class,
                         featuresConfig.getJoinMaxBroadcastTableSize(),
+                        true,
+                        value -> DataSize.valueOf((String) value),
+                        DataSize::toString),
+                new PropertyMetadata<>(
+                        COLOCATED_JOIN_FOR_MAX_REPLICATE_TABLE_SIZE,
+                        "Maximum estimated size of a dimension table that can be broadcast for Colocated Join instead of replication across each worker",
+                        VARCHAR,
+                        DataSize.class,
+                        featuresConfig.getColocatedJoinForMaxReplicateTableSize(),
                         true,
                         value -> DataSize.valueOf((String) value),
                         DataSize::toString),
@@ -1097,6 +1107,11 @@ public final class SystemSessionProperties
     public static Optional<DataSize> getJoinMaxBroadcastTableSize(Session session)
     {
         return Optional.ofNullable(session.getSystemProperty(JOIN_MAX_BROADCAST_TABLE_SIZE, DataSize.class));
+    }
+
+    public static Optional<DataSize> getColocatedJoinForMaxReplicateTableSize(Session session)
+    {
+        return Optional.ofNullable(session.getSystemProperty(COLOCATED_JOIN_FOR_MAX_REPLICATE_TABLE_SIZE, DataSize.class));
     }
 
     public static boolean isDistributedIndexJoinEnabled(Session session)

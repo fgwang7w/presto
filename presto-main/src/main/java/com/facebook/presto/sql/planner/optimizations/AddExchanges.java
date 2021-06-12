@@ -18,9 +18,9 @@ import com.facebook.presto.common.type.Type;
 import com.facebook.presto.connector.system.GlobalSystemConnector;
 import com.facebook.presto.execution.QueryManagerConfig.ExchangeMaterializationStrategy;
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.metadata.TableLayout;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorId;
+import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.GroupingProperty;
 import com.facebook.presto.spi.LocalProperty;
 import com.facebook.presto.spi.PrestoException;
@@ -43,6 +43,7 @@ import com.facebook.presto.spi.plan.UnionNode;
 import com.facebook.presto.spi.plan.ValuesNode;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
+import com.facebook.presto.spi.statistics.TableStatistics;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy;
 import com.facebook.presto.sql.parser.SqlParser;
@@ -101,6 +102,7 @@ import java.util.Set;
 import java.util.function.Function;
 
 import static com.facebook.presto.SystemSessionProperties.getAggregationPartitioningMergingStrategy;
+import static com.facebook.presto.SystemSessionProperties.getColocatedJoinForMaxReplicateTableSize;
 import static com.facebook.presto.SystemSessionProperties.getExchangeMaterializationStrategy;
 import static com.facebook.presto.SystemSessionProperties.getHashPartitionCount;
 import static com.facebook.presto.SystemSessionProperties.getPartialMergePushdownStrategy;
@@ -777,8 +779,9 @@ public class AddExchanges
             // Special handle for replicated / dim tables
             if (isReplicated(node.getBuild()) || isReplicated(node.getProbe())) {
                 // This optimization requires CBO to turn on. User requires to collect stats to ensure optimizer makes the optimal decision on removing exchange op
-                // JOIN_MAX_BROADCAST_TABLE_SIZE is required to determine the estimate table size that can be broadcast for JOIN.
-                // Note: by default JOIN_MAX_BROADCAST_TABLE_SIZE is unset, it is recommended to configure this threshold to limit 1M rows
+                // COLOCATED_JOIN_FOR_MAX_REPLICATE_TABLE_SIZE is required to determine the estimate dimension table size that can be replicated for Co-located JOIN.
+                // Note: by default COLOCATED_JOIN_FOR_MAX_REPLICATE_TABLE_SIZE is set to 100MB.
+                // It is recommended to configure this threshold to limit 1M rows (hash build side), or bounded by worker's memory constraint
                 return planReplicatedDimJoin(node);
             }
             // general case
@@ -889,15 +892,33 @@ public class AddExchanges
                 return false;
             }
 
+            Constraint<ColumnHandle> constraint = new Constraint<>(tableScanNode.getCurrentConstraint());
+            Map<String, ColumnHandle> columnHandles = metadata.getColumnHandles(session, tableHandle);
+            TableStatistics tableStatistics = metadata.getTableStatistics(session, tableScanNode.getTable(), ImmutableList.copyOf(columnHandles.values()), constraint);
+
+
+            if (tableStatistics.getTotalSize().getValue() < getColocatedJoinForMaxReplicateTableSize(session).get().getValue())
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+            /*
+            Optional<TableLayout.TablePartitioning> tablePartitioning = metadata.getLayout(session, tableScanNode.getTable()).getTablePartitioning();
+            List<LocalProperty<ColumnHandle>> localPropertiesForColumnHandle = metadata.getLayout(session, tableScanNode.getTable()).getLocalProperties();
+            ConnectorTableLayoutHandle connectorTableLayoutHandle = metadata.getLayout(session, tableScanNode.getTable()).getLayoutHandle();
+            TableMetadata tableMetadata = metadata.getTableMetadata(session, tableScanNode.getTable());
             TableLayout layout = metadata.getLayout(session, tableScanNode.getTable());
             Optional<Set<ColumnHandle>> streamPartitioning = layout.getStreamPartitioningColumns();
-
             if (streamPartitioning.isPresent()) {
                 return false;
             }
             else {
                 return true;
             }
+            */
         }
 
         private PlanWithProperties planPartitionedJoin(JoinNode node, List<VariableReferenceExpression> leftVariables, List<VariableReferenceExpression> rightVariables)
