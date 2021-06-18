@@ -41,6 +41,11 @@ public interface SplitSource
 
     boolean isFinished();
 
+    default boolean isDimSource()
+    {
+        return false;
+    }
+
     class SplitBatch
     {
         private final List<Split> splits;

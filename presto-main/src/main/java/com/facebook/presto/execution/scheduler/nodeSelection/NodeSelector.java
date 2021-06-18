@@ -18,6 +18,7 @@ import com.facebook.presto.execution.scheduler.BucketNodeMap;
 import com.facebook.presto.execution.scheduler.SplitPlacementResult;
 import com.facebook.presto.metadata.InternalNode;
 import com.facebook.presto.metadata.Split;
+import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.google.common.collect.ImmutableSet;
 
 import java.util.List;
@@ -59,4 +60,12 @@ public interface NodeSelector
      * to reattempt scheduling of this batch of splits, if some of them could not be scheduled.
      */
     SplitPlacementResult computeAssignments(Set<Split> splits, List<RemoteTask> existingTasks, BucketNodeMap bucketNodeMap);
+
+    /**
+     * Identifies the nodes for running the specified split.
+     *
+     * @param split dim table single split. when dim local join, single split need assign to multi node as hash table split
+     * @return a multimap from node to split, multi node key to single split
+     */
+    SplitPlacementResult dimComputeAssignments(Split split, List<RemoteTask> existingTasks, NodePartitionMap partitioning, boolean multiDimSource);
 }

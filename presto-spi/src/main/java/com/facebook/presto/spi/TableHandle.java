@@ -36,6 +36,7 @@ public final class TableHandle
 
     // This is not serializable; for local execution only
     private final Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter;
+    private final Optional<Boolean> isDimTable;
 
     @JsonCreator
     public TableHandle(
@@ -54,11 +55,23 @@ public final class TableHandle
             Optional<ConnectorTableLayoutHandle> layout,
             Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter)
     {
+        this(connectorId, connectorHandle, transaction, layout, dynamicFilter, Optional.of(false));
+    }
+
+    public TableHandle(
+            ConnectorId connectorId,
+            ConnectorTableHandle connectorHandle,
+            ConnectorTransactionHandle transaction,
+            Optional<ConnectorTableLayoutHandle> layout,
+            Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter,
+            Optional<Boolean> isDimTable)
+    {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.connectorHandle = requireNonNull(connectorHandle, "connectorHandle is null");
         this.transaction = requireNonNull(transaction, "transaction is null");
         this.layout = requireNonNull(layout, "layout is null");
         this.dynamicFilter = requireNonNull(dynamicFilter, "dynamicFilter is null");
+        this.isDimTable = isDimTable;
     }
 
     @JsonProperty
@@ -97,6 +110,19 @@ public final class TableHandle
             throw new RuntimeException("dynamicFilter already exists");
         }
         return new TableHandle(connectorId, connectorHandle, transaction, layout, Optional.of(dynamicFilter));
+    }
+
+    public TableHandle setDimTableTableHandle(Optional<Boolean> isDimTable)
+    {
+        if (!isDimTable.isPresent()) {
+            return this;
+        }
+        return new TableHandle(connectorId, connectorHandle, transaction, layout, dynamicFilter, isDimTable);
+    }
+
+    public Optional<Boolean> getIsDimTable()
+    {
+        return isDimTable;
     }
 
     @Override

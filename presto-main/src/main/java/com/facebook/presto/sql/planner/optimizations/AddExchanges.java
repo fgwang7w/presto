@@ -18,9 +18,7 @@ import com.facebook.presto.common.type.Type;
 import com.facebook.presto.connector.system.GlobalSystemConnector;
 import com.facebook.presto.execution.QueryManagerConfig.ExchangeMaterializationStrategy;
 import com.facebook.presto.metadata.Metadata;
-import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorId;
-import com.facebook.presto.spi.Constraint;
 import com.facebook.presto.spi.GroupingProperty;
 import com.facebook.presto.spi.LocalProperty;
 import com.facebook.presto.spi.PrestoException;
@@ -43,7 +41,6 @@ import com.facebook.presto.spi.plan.UnionNode;
 import com.facebook.presto.spi.plan.ValuesNode;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
-import com.facebook.presto.spi.statistics.TableStatistics;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.AggregationPartitioningMergingStrategy;
 import com.facebook.presto.sql.analyzer.FeaturesConfig.PartialMergePushdownStrategy;
 import com.facebook.presto.sql.parser.SqlParser;
@@ -102,7 +99,6 @@ import java.util.Set;
 import java.util.function.Function;
 
 import static com.facebook.presto.SystemSessionProperties.getAggregationPartitioningMergingStrategy;
-import static com.facebook.presto.SystemSessionProperties.getColocatedJoinForMaxReplicateTableSize;
 import static com.facebook.presto.SystemSessionProperties.getExchangeMaterializationStrategy;
 import static com.facebook.presto.SystemSessionProperties.getHashPartitionCount;
 import static com.facebook.presto.SystemSessionProperties.getPartialMergePushdownStrategy;
@@ -814,7 +810,7 @@ public class AddExchanges
             PlanWithProperties probe = joinNode.getLeft().accept(this, PreferredProperties.partitioned(ImmutableSet.copyOf(leftVariables)));
             PlanWithProperties build = joinNode.getRight().accept(this, PreferredProperties.partitioned(ImmutableSet.copyOf(rightVariables)));
 
-            if (joinNodeType== JoinNode.Type.INNER) {
+            if (joinNodeType == JoinNode.Type.INNER) {
                 /**
                  * for INNER join, co-located join is allowed if this is not a cross-join;
                  * cross join requires to broadcast the small side unless the build side is already a replicated table
@@ -844,6 +840,7 @@ public class AddExchanges
                                         new PartitioningScheme(buildPartitioning, build.getNode().getOutputVariables())),
                                 build.getProperties());
                     }
+                    distributionType = JoinNode.DistributionType.PARTITIONED;
                     return buildJoin(joinNode, probe, build, distributionType);
                 }
             }
@@ -854,17 +851,14 @@ public class AddExchanges
                  * TODO: to be implemented
                  */
             }
-            else if (joinNodeType == RIGHT)
-            {
+            else if (joinNodeType == RIGHT) {
                 /**
                  * for RIGHT join, co-located join is allowed only if both sides are replicated/dim tables;
                  * otehrwise, we must repartition one side of join leg, or repartition both sides
                  * TODO: to be implemented
                  */
-
             }
-            else if (joinNodeType == FULL)
-            {
+            else if (joinNodeType == FULL) {
                 /**
                  * for FULL join, co-located join is allowed only if both sides are replicated/dim tables;
                  * otherwise, we must repartition on replicated table to ensure correct result
@@ -888,6 +882,9 @@ public class AddExchanges
         private boolean isDimSource(TableScanNode tableScanNode)
         {
             TableHandle tableHandle = tableScanNode.getTable();
+            return tableHandle.getIsDimTable().isPresent() ? tableHandle.getIsDimTable().get() : false;
+
+            /*
             if (!tableHandle.getLayout().isPresent()) {
                 return false;
             }
@@ -896,16 +893,18 @@ public class AddExchanges
             Map<String, ColumnHandle> columnHandles = metadata.getColumnHandles(session, tableHandle);
             TableStatistics tableStatistics = metadata.getTableStatistics(session, tableScanNode.getTable(), ImmutableList.copyOf(columnHandles.values()), constraint);
 
-
-            if (tableStatistics.getTotalSize().getValue() < getColocatedJoinForMaxReplicateTableSize(session).get().getValue())
-            {
-                return true;
-            }
-            else
-            {
+            Optional<DataSize> colocatedJoinMaxReplicateTableSize = getColocatedJoinForMaxReplicateTableSize(session);
+            if (!colocatedJoinMaxReplicateTableSize.isPresent()) {
                 return false;
             }
-            /*
+
+            if (tableStatistics.getTotalSize().getValue() < colocatedJoinMaxReplicateTableSize.get().toBytes()) {
+                return true;
+            }
+            else {
+                return false;
+            }
+
             Optional<TableLayout.TablePartitioning> tablePartitioning = metadata.getLayout(session, tableScanNode.getTable()).getTablePartitioning();
             List<LocalProperty<ColumnHandle>> localPropertiesForColumnHandle = metadata.getLayout(session, tableScanNode.getTable()).getLocalProperties();
             ConnectorTableLayoutHandle connectorTableLayoutHandle = metadata.getLayout(session, tableScanNode.getTable()).getLayoutHandle();

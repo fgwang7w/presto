@@ -111,6 +111,7 @@ import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NO
 import static com.facebook.presto.sql.planner.SchedulingOrderVisitor.scheduleOrder;
 import static com.facebook.presto.sql.planner.StatisticsAggregationPlanner.TableStatisticAggregation;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.COORDINATOR_DISTRIBUTION;
+import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_BROADCAST_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SINGLE_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SOURCE_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.isCompatibleSystemPartitioning;
@@ -474,11 +475,18 @@ public class PlanFragmenter
         @Override
         public PlanNode visitTableScan(TableScanNode node, RewriteContext<FragmentProperties> context)
         {
+            boolean isDimTableReplicated = node.getTable().getIsDimTable().isPresent() ? node.getTable().getIsDimTable().get() : false;
+
             PartitioningHandle partitioning = metadata.getLayout(session, node.getTable())
                     .getTablePartitioning()
                     .map(TablePartitioning::getPartitioningHandle)
                     .orElse(SOURCE_DISTRIBUTION);
-            context.get().addSourceDistribution(node.getId(), partitioning, metadata, session);
+            if (!SOURCE_DISTRIBUTION.equals(partitioning)) {
+                if (isDimTableReplicated) {
+                    Partitioning newPartitioning = Partitioning.create(FIXED_BROADCAST_DISTRIBUTION, ImmutableList.of());
+                }
+            }
+            context.get().addSourceDistribution(node.getId(), partitioning, metadata, session, isDimTableReplicated);
             return context.defaultRewrite(node, context.get());
         }
 
@@ -888,9 +896,21 @@ public class PlanFragmenter
 
         public FragmentProperties setDistribution(PartitioningHandle distribution, Metadata metadata, Session session)
         {
+            return setDistribution(distribution, metadata, session, false);
+        }
+        public FragmentProperties setDistribution(PartitioningHandle distribution, Metadata metadata, Session session, boolean isDimTable)
+        {
             if (!partitioningHandle.isPresent()) {
                 partitioningHandle = Optional.of(distribution);
                 return this;
+            }
+            if (partitioningHandle.isPresent()) {
+                if (!isDimTable) {
+                    partitioningHandle = Optional.of(distribution);
+                }
+                if (isDimTable && partitioningHandle.get().equals(SINGLE_DISTRIBUTION)) {
+                    partitioningHandle = Optional.of(distribution);
+                }
             }
 
             PartitioningHandle currentPartitioning = this.partitioningHandle.get();
@@ -923,10 +943,7 @@ public class PlanFragmenter
                 return this;
             }
 
-            throw new IllegalStateException(format(
-                    "Cannot set distribution to %s. Already set to %s",
-                    distribution,
-                    this.partitioningHandle));
+            return this;
         }
 
         public FragmentProperties setCoordinatorOnlyDistribution()
@@ -947,13 +964,14 @@ public class PlanFragmenter
             return this;
         }
 
-        public FragmentProperties addSourceDistribution(PlanNodeId source, PartitioningHandle distribution, Metadata metadata, Session session)
+        public FragmentProperties addSourceDistribution(PlanNodeId source, PartitioningHandle distribution, Metadata metadata, Session session, boolean isDimTable)
         {
             requireNonNull(source, "source is null");
             requireNonNull(distribution, "distribution is null");
 
             partitionedSources.add(source);
-            return setDistribution(distribution, metadata, session);
+
+            return setDistribution(distribution, metadata, session, isDimTable);
         }
 
         public FragmentProperties addChildren(List<SubPlan> children)

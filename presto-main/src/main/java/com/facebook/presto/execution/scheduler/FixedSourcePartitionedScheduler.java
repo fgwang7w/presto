@@ -29,6 +29,7 @@ import com.facebook.presto.operator.StageExecutionDescriptor;
 import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
 import com.facebook.presto.spi.plan.PlanNodeId;
 import com.facebook.presto.split.SplitSource;
+import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Streams;
@@ -403,6 +404,42 @@ public class FixedSourcePartitionedScheduler
         {
             checkState(scheduleCompleted);
             // no-op
+        }
+    }
+
+    private static class DimSplitPlacementPolicy
+            implements SplitPlacementPolicy
+    {
+        private final NodePartitionMap partitioning;
+        private final NodeSelector nodeSelector;
+        private final Supplier<? extends List<RemoteTask>> remoteTasks;
+        private final boolean multiDimSource;
+
+        public DimSplitPlacementPolicy(NodeSelector nodeSelector, NodePartitionMap partitioning, Supplier<? extends List<RemoteTask>> remoteTasks, boolean multiDimSource)
+        {
+            this.nodeSelector = nodeSelector;
+            this.partitioning = partitioning;
+            this.remoteTasks = remoteTasks;
+            this.multiDimSource = multiDimSource;
+        }
+
+        @Override
+        public SplitPlacementResult computeAssignments(Set<Split> splits)
+        {
+            checkArgument(splits.size() == 1, "dim table splits size is " + splits.size());
+            Split singleSplit = splits.iterator().next();
+
+            return nodeSelector.dimComputeAssignments(singleSplit, remoteTasks.get(), partitioning, multiDimSource);
+        }
+
+        @Override
+        public void lockDownNodes()
+        {}
+
+        @Override
+        public List<InternalNode> getActiveNodes()
+        {
+            return ImmutableList.copyOf(partitioning.getPartitionToNode());
         }
     }
 }

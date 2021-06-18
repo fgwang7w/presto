@@ -27,6 +27,7 @@ import com.facebook.presto.metadata.Split;
 import com.facebook.presto.spi.ConnectorId;
 import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.SplitContext;
+import com.facebook.presto.sql.planner.NodePartitionMap;
 import com.google.common.base.Supplier;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
@@ -51,6 +52,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import static com.clearspring.analytics.util.Preconditions.checkState;
 import static com.facebook.airlift.concurrent.MoreFutures.whenAnyCompleteCancelOthers;
 import static com.facebook.presto.SystemSessionProperties.getMaxUnacknowledgedSplitsPerTask;
 import static com.facebook.presto.execution.scheduler.NodeSchedulerConfig.NetworkTopologyType;
@@ -378,5 +380,55 @@ public class NodeScheduler
                 .map(remoteTask -> remoteTask.whenSplitQueueHasSpace(spaceThreshold))
                 .collect(toImmutableList());
         return whenAnyCompleteCancelOthers(stateChangeFutures);
+    }
+
+    /**
+     * dim table select node to distribution for dim table join
+     *
+     * @param nodeMap nodeMap will be used to new NodeAssignmentStats in the future
+     * @param nodeTaskMap nodeTaskMap will be used to new NodeAssignmentStats in the future
+     * @param maxSplitsPerNode maxSplitsPerNode will be used in the future
+     * @param maxPendingSplitsPerTask maxPendingSplitsPerTask will be used in the future
+     * @param split singleSplit from dim table
+     * @param existingTasks existingTasks will be used in the future
+     * @param partitioning partitioning
+     * @return SplitPlacementResult
+     */
+    public static SplitPlacementResult dimSelectDistributionNodes(
+            NodeMap nodeMap,
+            NodeTaskMap nodeTaskMap,
+            int maxSplitsPerNode,
+            int maxPendingSplitsPerTask,
+            Split split,
+            List<RemoteTask> existingTasks,
+            NodePartitionMap partitioning,
+            boolean multiDimSource)
+    {
+        // it must be ArrayListMultimap
+        // for dim table assignments may has the same <Node, Split> pair
+        Multimap<InternalNode, Split> assignments = HashMultimap.create();
+
+        if (multiDimSource) {
+            // align dim split to fact table splits
+            int[] bucketToPartition = partitioning.getBucketToPartition();
+            List<InternalNode> partitionToNode = partitioning.getPartitionToNode();
+            for (int bucket = 0; bucket < bucketToPartition.length; bucket++) {
+                InternalNode node = partitionToNode.get(bucketToPartition[bucket]);
+                checkState(node != null, "node for partition:%s is null", bucketToPartition[bucket]);
+                assignments.put(node, split);
+            }
+
+            checkState(assignments.size() == bucketToPartition.length,
+                    "assignments.size:%s not equals buckets.size:%s", assignments.size(), bucketToPartition.length);
+        }
+        else {
+            // assign one dim split per node
+            for (InternalNode node : partitioning.getPartitionToNode()) {
+                assignments.put(node, split);
+            }
+        }
+
+        ListenableFuture<?> blocked = toWhenHasSplitQueueSpaceFuture(existingTasks, calculateLowWatermark(maxPendingSplitsPerTask));
+        return new SplitPlacementResult(blocked, assignments);
     }
 }

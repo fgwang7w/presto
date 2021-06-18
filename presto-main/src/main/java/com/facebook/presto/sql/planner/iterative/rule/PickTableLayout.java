@@ -35,6 +35,7 @@ import com.facebook.presto.spi.relation.ConstantExpression;
 import com.facebook.presto.spi.relation.DomainTranslator;
 import com.facebook.presto.spi.relation.RowExpression;
 import com.facebook.presto.spi.relation.VariableReferenceExpression;
+import com.facebook.presto.spi.statistics.TableStatistics;
 import com.facebook.presto.sql.planner.RowExpressionInterpreter;
 import com.facebook.presto.sql.planner.VariableResolver;
 import com.facebook.presto.sql.planner.VariablesExtractor;
@@ -46,6 +47,7 @@ import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import io.airlift.units.DataSize;
 
 import java.util.Map;
 import java.util.Objects;
@@ -53,6 +55,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
+import static com.facebook.presto.SystemSessionProperties.getColocatedJoinForMaxReplicateTableSize;
 import static com.facebook.presto.SystemSessionProperties.isNewOptimizerEnabled;
 import static com.facebook.presto.expressions.LogicalRowExpressions.TRUE_CONSTANT;
 import static com.facebook.presto.matching.Capture.newCapture;
@@ -220,9 +223,24 @@ public class PickTableLayout
                 return Result.ofPlanNode(new ValuesNode(context.getIdAllocator().getNextId(), tableScanNode.getOutputVariables(), ImmutableList.of()));
             }
 
+            // Determine whether the table can be replicated as a dimension table based upon table size
+            Constraint<ColumnHandle> constraint = new Constraint<>(tableScanNode.getCurrentConstraint());
+            Map<String, ColumnHandle> columnHandles = metadata.getColumnHandles(session, tableHandle);
+            TableStatistics tableStatistics = metadata.getTableStatistics(session, tableScanNode.getTable(), ImmutableList.copyOf(columnHandles.values()), constraint);
+            Optional<DataSize> colocatedJoinMaxReplicateTableSize = getColocatedJoinForMaxReplicateTableSize(session);
+            boolean isDimTable = false;
+            if (colocatedJoinMaxReplicateTableSize.isPresent()) {
+                isDimTable = (tableStatistics.getTotalSize().getValue() < colocatedJoinMaxReplicateTableSize.get().toBytes()) ? true : false;
+            }
+
+            TableHandle newTableHandle = layout.getLayout().getNewTableHandle();
+            if (isDimTable) {
+                newTableHandle = newTableHandle.setDimTableTableHandle(Optional.of(isDimTable));
+            }
+
             return Result.ofPlanNode(new TableScanNode(
                     tableScanNode.getId(),
-                    layout.getLayout().getNewTableHandle(),
+                    newTableHandle,
                     tableScanNode.getOutputVariables(),
                     tableScanNode.getAssignments(),
                     layout.getLayout().getPredicate(),
@@ -316,7 +334,7 @@ public class PickTableLayout
 
         TableScanNode tableScan = new TableScanNode(
                 node.getId(),
-                layout.getLayout().getNewTableHandle(),
+                layout.getLayout().getNewTableHandle().setDimTableTableHandle(node.getTable().getIsDimTable()),
                 node.getOutputVariables(),
                 node.getAssignments(),
                 layout.getLayout().getPredicate(),

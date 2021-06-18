@@ -92,13 +92,20 @@ public class HiveAddRequestedColumnsToLayout
                             .collect(toImmutableSet())),
                     hiveLayout.isPartialAggregationsPushedDown());
 
+            // only allow dim table to be replicated across all workers if the table is NOT partitioned, bucketed table can be colocated already
+            boolean canDimTableReplicated = false;
+            if (tableScan.getTable().getIsDimTable().isPresent()) {
+                canDimTableReplicated = tableScan.getTable().getIsDimTable().get()
+                        && !hiveLayout.getPartitionColumns().stream().anyMatch(hiveColumnHandle -> hiveColumnHandle.isPartitionKey());
+            }
+
             return new TableScanNode(
                     tableScan.getId(),
                     new TableHandle(
                             tableScan.getTable().getConnectorId(),
                             tableScan.getTable().getConnectorHandle(),
                             tableScan.getTable().getTransaction(),
-                            Optional.of(hiveLayoutWithDesiredColumns)),
+                            Optional.of(hiveLayoutWithDesiredColumns)).setDimTableTableHandle(Optional.of(canDimTableReplicated)),
                     tableScan.getOutputVariables(),
                     tableScan.getAssignments(),
                     tableScan.getCurrentConstraint(),

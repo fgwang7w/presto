@@ -269,7 +269,7 @@ public class HivePartialAggregationPushdown
                     oldTableHandle.getConnectorId(),
                     hiveTableHandle,
                     oldTableHandle.getTransaction(),
-                    Optional.of(newTableLayoutHandle));
+                    Optional.of(newTableLayoutHandle)).setDimTableTableHandle(oldTableHandle.getIsDimTable());
 
             return Optional.of(new
                     TableScanNode(

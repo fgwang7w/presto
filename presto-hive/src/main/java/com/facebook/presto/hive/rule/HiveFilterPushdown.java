@@ -388,7 +388,8 @@ public class HiveFilterPushdown
 
             TableScanNode node = new TableScanNode(
                     tableScan.getId(),
-                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle())),
+                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle()))
+                            .setDimTableTableHandle(tableScan.getTable().getIsDimTable()),
                     tableScan.getOutputVariables(),
                     tableScan.getAssignments(),
                     layout.getPredicate(),
@@ -422,7 +423,8 @@ public class HiveFilterPushdown
 
             return new TableScanNode(
                     tableScan.getId(),
-                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle())),
+                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle()))
+                            .setDimTableTableHandle(tableScan.getTable().getIsDimTable()),
                     tableScan.getOutputVariables(),
                     tableScan.getAssignments(),
                     pushdownFilterResult.getLayout().getPredicate(),
