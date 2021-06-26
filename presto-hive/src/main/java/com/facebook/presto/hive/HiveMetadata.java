@@ -337,6 +337,7 @@ import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static com.google.common.collect.Iterables.concat;
 import static com.google.common.collect.Streams.stream;
+import static java.lang.Math.max;
 import static java.lang.String.format;
 import static java.util.Collections.emptyList;
 import static java.util.Locale.ENGLISH;
@@ -2753,14 +2754,14 @@ public class HiveMetadata
             return Optional.empty();
         }
 
-        int largerBucketCount = Math.max(leftHandle.getBucketCount(), rightHandle.getBucketCount());
+        int largerBucketCount = max(leftHandle.getBucketCount(), rightHandle.getBucketCount());
         int smallerBucketCount = Math.min(leftHandle.getBucketCount(), rightHandle.getBucketCount());
         if (largerBucketCount % smallerBucketCount != 0) {
             // must be evenly divisible
             return Optional.empty();
         }
-        if (Integer.bitCount(largerBucketCount / smallerBucketCount) != 1) {
-            // ratio must be power of two
+        if (Integer.bitCount(largerBucketCount % smallerBucketCount) != 0) {
+            // ratio must be zero
             return Optional.empty();
         }
 
@@ -2790,13 +2791,13 @@ public class HiveMetadata
             return false;
         }
 
-        int leftBucketCount = leftHandle.getBucketCount();
-        int rightBucketCount = rightHandle.getBucketCount();
-        return leftBucketCount == rightBucketCount || // must be evenly divisible
-                (leftBucketCount % rightBucketCount == 0 &&
+        int largerBucketCount = Math.max(leftHandle.getBucketCount(), rightHandle.getBucketCount());
+        int smallerBucketCount = Math.min(leftHandle.getBucketCount(), rightHandle.getBucketCount());
+        return largerBucketCount == smallerBucketCount || // must be evenly divisible
+                (largerBucketCount % smallerBucketCount == 0 &&
                         // ratio must be power of two
-                        // TODO: this can be relaxed
-                        Integer.bitCount(leftBucketCount / rightBucketCount) == 1);
+                        // buckets needs to be at least proportional/
+                        Integer.bitCount(largerBucketCount % smallerBucketCount) == 0);
     }
 
     private static OptionalInt min(OptionalInt left, OptionalInt right)
@@ -2829,10 +2830,10 @@ public class HiveMetadata
                 "Types from the new PartitioningHandle (%s) does not match the TableLayoutHandle (%s)",
                 hiveTypes.get(),
                 bucketTypes);
-        int largerBucketCount = Math.max(bucketHandle.getTableBucketCount(), hivePartitioningHandle.getBucketCount());
+        int largerBucketCount = max(bucketHandle.getTableBucketCount(), hivePartitioningHandle.getBucketCount());
         int smallerBucketCount = Math.min(bucketHandle.getTableBucketCount(), hivePartitioningHandle.getBucketCount());
         checkArgument(
-                largerBucketCount % smallerBucketCount == 0 && Integer.bitCount(largerBucketCount / smallerBucketCount) == 1,
+                largerBucketCount % smallerBucketCount == 0 && Integer.bitCount(largerBucketCount % smallerBucketCount) == 0,
                 "The requested partitioning is not a valid alternative for the table layout");
 
         return new HiveTableLayoutHandle(

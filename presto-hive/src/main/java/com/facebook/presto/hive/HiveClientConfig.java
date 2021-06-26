@@ -142,7 +142,7 @@ public class HiveClientConfig
 
     private int fileSystemMaxCacheSize = 1000;
 
-    private boolean optimizeMismatchedBucketCount;
+    private boolean optimizeMismatchedBucketCount = true;
     private boolean writesToNonManagedTablesEnabled;
     private boolean createsOfNonManagedTablesEnabled = true;
 

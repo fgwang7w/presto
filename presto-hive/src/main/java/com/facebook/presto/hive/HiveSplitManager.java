@@ -848,8 +848,8 @@ public class HiveSplitManager
             // must be evenly divisible
             return false;
         }
-        if (Integer.bitCount(larger / smaller) != 1) {
-            // ratio must be power of two
+        if (Integer.bitCount(larger % smaller) != 0) {
+            // ratio must be zero
             return false;
         }
         return true;
