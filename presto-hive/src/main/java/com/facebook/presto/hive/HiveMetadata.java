@@ -288,6 +288,7 @@ import static com.facebook.presto.hive.HiveUtil.translateHiveUnsupportedTypesFor
 import static com.facebook.presto.hive.HiveUtil.verifyPartitionTypeSupported;
 import static com.facebook.presto.hive.HiveWriteUtils.checkTableIsWritable;
 import static com.facebook.presto.hive.HiveWriteUtils.isFileCreatedByQuery;
+import static com.facebook.presto.hive.HiveWriteUtils.isS3FileSystem;
 import static com.facebook.presto.hive.HiveWriteUtils.isWritableType;
 import static com.facebook.presto.hive.HiveWriterFactory.computeBucketedFileName;
 import static com.facebook.presto.hive.HiveWriterFactory.getFileExtension;
@@ -2784,6 +2785,8 @@ public class HiveMetadata
         MetastoreContext metastoreContext = getMetastoreContext(session);
         Table table = metastore.getTable(metastoreContext, tableName.getSchemaName(), tableName.getTableName())
                 .orElseThrow(() -> new TableNotFoundException(tableName));
+
+        boolean canReplicatedReads = canReplicatedReads(tableName, hiveLayoutHandle, session);
         // never ignore table bucketing for temporary tables as those are created such explicitly by the engine request
         boolean bucketExecutionEnabled = table.getTableType().equals(TEMPORARY_TABLE) || isBucketExecutionEnabled(session);
         if (bucketExecutionEnabled && hiveLayoutHandle.getBucketHandle().isPresent()) {
@@ -2880,7 +2883,20 @@ public class HiveMetadata
                 streamPartitionColumns,
                 discretePredicates,
                 localPropertyBuilder.build(),
-                Optional.of(hiveLayoutHandle.getRemainingPredicate()));
+                Optional.of(hiveLayoutHandle.getRemainingPredicate()),
+                Optional.of(canReplicatedReads));
+    }
+
+    protected boolean canReplicatedReads(SchemaTableName tableName, HiveTableLayoutHandle hiveLayoutHandle, ConnectorSession session)
+    {
+        String tablePath = hiveLayoutHandle.getTablePath();
+        HdfsContext context = new HdfsContext(session, tableName.getSchemaName(), tableName.getTableName(), tablePath, false);
+
+        // only when property enforces to require high bandwidth storage and it is on S3 file system, replicated-read is allowed
+        if (isS3FileSystem(context, hdfsEnvironment, new Path(tablePath))) {
+            return true;
+        }
+        return false;
     }
 
     @Override

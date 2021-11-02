@@ -34,6 +34,7 @@ public class ConnectorTableLayout
     private final Optional<DiscretePredicates> discretePredicates;
     private final List<LocalProperty<ColumnHandle>> localProperties;
     private final Optional<RowExpression> remainingPredicate;
+    private final Optional<Boolean> isCloudTable;
 
     public ConnectorTableLayout(ConnectorTableLayoutHandle handle)
     {
@@ -44,6 +45,7 @@ public class ConnectorTableLayout
                 Optional.empty(),
                 Optional.empty(),
                 emptyList(),
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -56,7 +58,7 @@ public class ConnectorTableLayout
             Optional<DiscretePredicates> discretePredicates,
             List<LocalProperty<ColumnHandle>> localProperties)
     {
-        this(handle, columns, predicate, tablePartitioning, streamPartitioningColumns, discretePredicates, localProperties, Optional.empty());
+        this(handle, columns, predicate, tablePartitioning, streamPartitioningColumns, discretePredicates, localProperties, Optional.empty(), Optional.empty());
     }
 
     public ConnectorTableLayout(
@@ -67,7 +69,8 @@ public class ConnectorTableLayout
             Optional<Set<ColumnHandle>> streamPartitioningColumns,
             Optional<DiscretePredicates> discretePredicates,
             List<LocalProperty<ColumnHandle>> localProperties,
-            Optional<RowExpression> remainingPredicate)
+            Optional<RowExpression> remainingPredicate,
+            Optional<Boolean> isCloudTable)
     {
         requireNonNull(handle, "handle is null");
         requireNonNull(columns, "columns is null");
@@ -86,6 +89,7 @@ public class ConnectorTableLayout
         this.discretePredicates = discretePredicates;
         this.localProperties = localProperties;
         this.remainingPredicate = remainingPredicate;
+        this.isCloudTable = isCloudTable;
     }
 
     public ConnectorTableLayoutHandle getHandle()
@@ -164,6 +168,19 @@ public class ConnectorTableLayout
     public List<LocalProperty<ColumnHandle>> getLocalProperties()
     {
         return localProperties;
+    }
+
+    /**
+     *
+     * A Cloud Table is identified as eligible to use replicated-reads for a broadcast join
+     * <p>
+     *     If the cloud table is stored in a high bandwdith storage media e.g. AWS S3,
+     *     this table may be accessed by replicated-reads by each worker to co-locate join operation
+     * </p>
+     */
+    public Optional<Boolean> getIsCloudTable()
+    {
+        return isCloudTable;
     }
 
     @Override

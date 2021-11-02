@@ -37,6 +37,7 @@ public class HivePartitioningHandle
     private final BucketFunctionType bucketFunctionType;
     private final Optional<List<HiveType>> hiveTypes;
     private final Optional<List<Type>> types;
+    private final Optional<Boolean> isCloudTable;
 
     public static HivePartitioningHandle createHiveCompatiblePartitioningHandle(
             int bucketCount,
@@ -49,6 +50,21 @@ public class HivePartitioningHandle
                 HIVE_COMPATIBLE,
                 Optional.of(hiveTypes),
                 Optional.empty());
+    }
+
+    public static HivePartitioningHandle createHiveCompatiblePartitioningHandle(
+            int bucketCount,
+            List<HiveType> hiveTypes,
+            OptionalInt maxCompatibleBucketCount,
+            Optional<Boolean> isCloudTable)
+    {
+        return new HivePartitioningHandle(
+                bucketCount,
+                maxCompatibleBucketCount,
+                HIVE_COMPATIBLE,
+                Optional.of(hiveTypes),
+                Optional.empty(),
+                isCloudTable);
     }
 
     public static HivePartitioningHandle createPrestoNativePartitioningHandle(
@@ -64,7 +80,6 @@ public class HivePartitioningHandle
                 Optional.of(types));
     }
 
-    @JsonCreator
     public HivePartitioningHandle(
             @JsonProperty("bucketCount") int bucketCount,
             @JsonProperty("maxCompatibleBucketCount") OptionalInt maxCompatibleBucketCount,
@@ -72,8 +87,21 @@ public class HivePartitioningHandle
             @JsonProperty("hiveTypes") Optional<List<HiveType>> hiveTypes,
             @JsonProperty("types") Optional<List<Type>> types)
     {
+        this(bucketCount, maxCompatibleBucketCount, bucketFunctionType, hiveTypes, types, Optional.empty());
+    }
+
+    @JsonCreator
+    public HivePartitioningHandle(
+            @JsonProperty("bucketCount") int bucketCount,
+            @JsonProperty("maxCompatibleBucketCount") OptionalInt maxCompatibleBucketCount,
+            @JsonProperty("bucketFunctionType") BucketFunctionType bucketFunctionType,
+            @JsonProperty("hiveTypes") Optional<List<HiveType>> hiveTypes,
+            @JsonProperty("types") Optional<List<Type>> types,
+            @JsonProperty("isDimTable") Optional<Boolean> isCloudTable)
+    {
         this.bucketCount = bucketCount;
         this.maxCompatibleBucketCount = maxCompatibleBucketCount;
+        this.isCloudTable = isCloudTable;
         this.bucketFunctionType = requireNonNull(bucketFunctionType, "bucketFunctionType is null");
         this.hiveTypes = requireNonNull(hiveTypes, "hiveTypes is null");
         this.types = requireNonNull(types, "types is null");
@@ -114,6 +142,18 @@ public class HivePartitioningHandle
         return bucketFunctionType;
     }
 
+    @JsonProperty
+    public Optional<Boolean> getIsCloudTable()
+    {
+        return isCloudTable;
+    }
+
+    @Override
+    public boolean isCloudTable()
+    {
+        return isCloudTable.isPresent() && isCloudTable.get();
+    }
+
     @Override
     public String toString()
     {
@@ -121,7 +161,8 @@ public class HivePartitioningHandle
                 "buckets=%s, bucketFunctionType=%s, types=%s",
                 bucketCount,
                 bucketFunctionType,
-                bucketFunctionType.equals(HIVE_COMPATIBLE) ? hiveTypes.get() : types.get());
+                bucketFunctionType.equals(HIVE_COMPATIBLE) ? hiveTypes.get() : types.get(),
+                isCloudTable.isPresent() && isCloudTable.get());
     }
 
     @Override
@@ -143,6 +184,6 @@ public class HivePartitioningHandle
     @Override
     public int hashCode()
     {
-        return Objects.hash(bucketCount, bucketFunctionType, hiveTypes, types);
+        return Objects.hash(bucketCount, bucketFunctionType, hiveTypes, types, isCloudTable);
     }
 }

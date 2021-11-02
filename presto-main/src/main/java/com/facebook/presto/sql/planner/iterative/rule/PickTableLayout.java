@@ -223,7 +223,7 @@ public class PickTableLayout
             return Result.ofPlanNode(new TableScanNode(
                     tableScanNode.getSourceLocation(),
                     tableScanNode.getId(),
-                    layout.getLayout().getNewTableHandle(),
+                    layout.getLayout().getNewTableHandle().setReplicatedReadsCloudTableHandle(layout.getLayout().getIsCloudTable()),
                     tableScanNode.getOutputVariables(),
                     tableScanNode.getAssignments(),
                     tableScanNode.getTableConstraints(),
@@ -319,7 +319,7 @@ public class PickTableLayout
         TableScanNode tableScan = new TableScanNode(
                 node.getSourceLocation(),
                 node.getId(),
-                layout.getLayout().getNewTableHandle(),
+                layout.getLayout().getNewTableHandle().setReplicatedReadsCloudTableHandle(layout.getLayout().getIsCloudTable()),
                 node.getOutputVariables(),
                 node.getAssignments(),
                 node.getTableConstraints(),

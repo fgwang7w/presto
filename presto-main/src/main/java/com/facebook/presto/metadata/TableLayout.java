@@ -88,6 +88,11 @@ public class TableLayout
         return new TableHandle(connectorId, connectorTableHandle, transactionHandle, Optional.of(layout.getHandle()));
     }
 
+    public Optional<Boolean> getIsCloudTable()
+    {
+        return layout.getIsCloudTable();
+    }
+
     public Optional<TablePartitioning> getTablePartitioning()
     {
         return layout.getTablePartitioning()

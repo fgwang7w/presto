@@ -36,6 +36,8 @@ public final class TableHandle
 
     // This is not serializable; for local execution only
     private final Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter;
+    private final Optional<Boolean> isCloudTable;
+    private final Optional<Boolean> canReplicatedForColocatedBroadcastJoin;
 
     @JsonCreator
     public TableHandle(
@@ -54,11 +56,36 @@ public final class TableHandle
             Optional<ConnectorTableLayoutHandle> layout,
             Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter)
     {
+        this(connectorId, connectorHandle, transaction, layout, dynamicFilter, Optional.empty());
+    }
+
+    public TableHandle(
+            ConnectorId connectorId,
+            ConnectorTableHandle connectorHandle,
+            ConnectorTransactionHandle transaction,
+            Optional<ConnectorTableLayoutHandle> layout,
+            Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter,
+            Optional<Boolean> isCloudTable)
+    {
+        this(connectorId, connectorHandle, transaction, layout, dynamicFilter, Optional.empty(), Optional.empty());
+    }
+
+    private TableHandle(
+            ConnectorId connectorId,
+            ConnectorTableHandle connectorHandle,
+            ConnectorTransactionHandle transaction,
+            Optional<ConnectorTableLayoutHandle> layout,
+            Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter,
+            Optional<Boolean> isCloudTable,
+            Optional<Boolean> canReplicatedForColocatedBroadcastJoin)
+    {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.connectorHandle = requireNonNull(connectorHandle, "connectorHandle is null");
         this.transaction = requireNonNull(transaction, "transaction is null");
         this.layout = requireNonNull(layout, "layout is null");
         this.dynamicFilter = requireNonNull(dynamicFilter, "dynamicFilter is null");
+        this.isCloudTable = isCloudTable;
+        this.canReplicatedForColocatedBroadcastJoin = canReplicatedForColocatedBroadcastJoin;
     }
 
     @JsonProperty
@@ -99,6 +126,26 @@ public final class TableHandle
         return new TableHandle(connectorId, connectorHandle, transaction, layout, Optional.of(dynamicFilter));
     }
 
+    public TableHandle setReplicatedReadsCloudTableHandle(Optional<Boolean> isCloudTable)
+    {
+        return new TableHandle(connectorId, connectorHandle, transaction, layout, dynamicFilter, isCloudTable, Optional.empty());
+    }
+
+    public TableHandle setReplicatedReadsCloudTableHandle(Optional<Boolean> isCloudTable, Optional<Boolean> canReplicatedForColocatedBroadcastJoin)
+    {
+        return new TableHandle(connectorId, connectorHandle, transaction, layout, dynamicFilter, isCloudTable, canReplicatedForColocatedBroadcastJoin);
+    }
+
+    public Optional<Boolean> getIsCloudTable()
+    {
+        return isCloudTable;
+    }
+
+    public Optional<Boolean> getCanReplicatedForColocatedBroadcastJoin()
+    {
+        return canReplicatedForColocatedBroadcastJoin;
+    }
+
     @Override
     public boolean equals(Object obj)
     {
@@ -133,6 +180,8 @@ public final class TableHandle
         stringBuilder.append("connectorId='").append(connectorId).append('\'');
         stringBuilder.append(", connectorHandle='").append(connectorHandle).append('\'');
         stringBuilder.append(", layout='").append(layout).append('\'');
+        stringBuilder.append(", isCloudTable='").append(isCloudTable).append('\'');
+        stringBuilder.append(", canReplicatedForColocatedBroadcastJoin='").append(canReplicatedForColocatedBroadcastJoin).append('\'');
         stringBuilder.append('}');
         return stringBuilder.toString();
     }
