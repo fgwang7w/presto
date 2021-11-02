@@ -67,6 +67,12 @@ public class BufferingSplitSource
     }
 
     @Override
+    public boolean isReplicatedReadsCloudTable()
+    {
+        return source.isReplicatedReadsCloudTable();
+    }
+
+    @Override
     public void close()
     {
         source.close();

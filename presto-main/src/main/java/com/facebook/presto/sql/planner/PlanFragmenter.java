@@ -41,6 +41,7 @@ import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.connector.ConnectorPartitionHandle;
 import com.facebook.presto.spi.plan.AggregationNode;
 import com.facebook.presto.spi.plan.Assignments;
+import com.facebook.presto.spi.plan.FilterNode;
 import com.facebook.presto.spi.plan.MarkDistinctNode;
 import com.facebook.presto.spi.plan.PlanNode;
 import com.facebook.presto.spi.plan.PlanNodeId;
@@ -86,8 +87,10 @@ import com.google.common.collect.ImmutableSet;
 
 import javax.inject.Inject;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -117,6 +120,7 @@ import static com.facebook.presto.spi.connector.NotPartitionedPartitionHandle.NO
 import static com.facebook.presto.sql.planner.SchedulingOrderVisitor.scheduleOrder;
 import static com.facebook.presto.sql.planner.StatisticsAggregationPlanner.TableStatisticAggregation;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.COORDINATOR_DISTRIBUTION;
+import static com.facebook.presto.sql.planner.SystemPartitioningHandle.FIXED_HASH_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SINGLE_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.SOURCE_DISTRIBUTION;
 import static com.facebook.presto.sql.planner.SystemPartitioningHandle.isCompatibleSystemPartitioning;
@@ -314,7 +318,7 @@ public class PlanFragmenter
         // If the fragment's partitioning is SINGLE or COORDINATOR_ONLY, leave the sources as is (this is for single-node execution)
         if (!fragment.getPartitioning().isSingleNode()) {
             PartitioningHandleReassigner partitioningHandleReassigner = new PartitioningHandleReassigner(fragment.getPartitioning(), metadata, session);
-            newRoot = SimplePlanRewriter.rewriteWith(partitioningHandleReassigner, newRoot);
+            newRoot = SimplePlanRewriter.rewriteWith(partitioningHandleReassigner, newRoot, new PartitioningHandleReassigner.Context());
         }
         PartitioningScheme outputPartitioningScheme = fragment.getPartitioningScheme();
         Partitioning newOutputPartitioning = outputPartitioningScheme.getPartitioning();
@@ -484,13 +488,50 @@ public class PlanFragmenter
         }
 
         @Override
+        public PlanNode visitJoin(JoinNode node, RewriteContext<FragmentProperties> context)
+        {
+            if (determineReplicatedReadsJoinAllowed(node, session)) {
+                if (canReplicatedRead(node.getProbe())) {
+                    context.get().setReplicatedReadsQueue(true);
+                }
+                PlanNode left = context.rewrite(node.getProbe(), context.get());
+                context.get().dequeFromReplicatedReadsQueue();
+                if (canReplicatedRead(node.getBuild())) {
+                    context.get().setReplicatedReadsQueue(true);
+                }
+                PlanNode right = context.rewrite(node.getBuild(), context.get());
+                context.get().dequeFromReplicatedReadsQueue();
+                return new JoinNode(
+                        node.getSourceLocation(),
+                        node.getId(),
+                        node.getType(),
+                        left,
+                        right,
+                        node.getCriteria(),
+                        node.getOutputVariables(),
+                        node.getFilter(),
+                        node.getLeftHashVariable(),
+                        node.getRightHashVariable(),
+                        node.getDistributionType(),
+                        node.getDynamicFilters());
+            }
+
+            return context.defaultRewrite(node, context.get());
+        }
+
+        @Override
         public PlanNode visitTableScan(TableScanNode node, RewriteContext<FragmentProperties> context)
         {
-            PartitioningHandle partitioning = metadata.getLayout(session, node.getTable())
+            boolean isCloudTableReplicated = context.get().getReplicatedReadsAllowed();
+
+            PartitioningHandle partitioning = metadata.getLayout(session, node.getTable(), isCloudTableReplicated)
                     .getTablePartitioning()
                     .map(TablePartitioning::getPartitioningHandle)
                     .orElse(SOURCE_DISTRIBUTION);
-            context.get().addSourceDistribution(node.getId(), partitioning, metadata, session);
+            // if replicated read join and the partitioning is source, need to adjust the table handle now
+            // before reassignpartition because it will be too late once the fragment partitioning is determined here
+
+            context.get().addSourceDistribution(node.getId(), partitioning, metadata, session, isCloudTableReplicated);
             return context.defaultRewrite(node, context.get());
         }
 
@@ -880,6 +921,8 @@ public class PlanFragmenter
         private Optional<PartitioningHandle> partitioningHandle = Optional.empty();
         private final Set<PlanNodeId> partitionedSources = new HashSet<>();
 
+        private Deque<Boolean> replicatedReadsQueue = new ArrayDeque<>();
+
         public FragmentProperties(PartitioningScheme partitioningScheme)
         {
             this.partitioningScheme = partitioningScheme;
@@ -890,10 +933,35 @@ public class PlanFragmenter
             return children;
         }
 
+        public FragmentProperties setReplicatedReadsQueue(boolean joinReplicateReadsAllowed)
+        {
+            this.replicatedReadsQueue.push(joinReplicateReadsAllowed);
+            return this;
+        }
+
+        public FragmentProperties dequeFromReplicatedReadsQueue()
+        {
+            this.replicatedReadsQueue.poll();
+            return this;
+        }
+
+        public boolean getReplicatedReadsAllowed()
+        {
+            if (replicatedReadsQueue.isEmpty()) {
+                return false;
+            }
+            return this.replicatedReadsQueue.peek();
+        }
+
         public FragmentProperties setSingleNodeDistribution()
         {
             if (partitioningHandle.isPresent() && partitioningHandle.get().isSingleNode()) {
                 // already single node distribution
+                return this;
+            }
+
+            // replicated cloud table already single
+            if (partitioningHandle.isPresent() && (partitioningHandle.get().getConnectorHandle().isReplicatedReadsTable())) {
                 return this;
             }
 
@@ -909,9 +977,29 @@ public class PlanFragmenter
 
         public FragmentProperties setDistribution(PartitioningHandle distribution, Metadata metadata, Session session)
         {
+            return setDistribution(distribution, metadata, session, false);
+        }
+        public FragmentProperties setDistribution(PartitioningHandle distribution, Metadata metadata, Session session, boolean isCloudTable)
+        {
             if (!partitioningHandle.isPresent()) {
                 partitioningHandle = Optional.of(distribution);
                 return this;
+            }
+            else {
+                if (!isCloudTable) {
+                    // if the partitioning handler is not system partition handler, we cannot replace the distribution handle by a system partition handle,
+                    // because we may not be able to process split sources using system handler
+                    if (!(partitioningHandle.get().getConnectorHandle() instanceof SystemPartitioningHandle) &&
+                            distribution.getConnectorHandle() instanceof SystemPartitioningHandle) {
+                        return this;
+                    }
+                    // partitioningHandle = Optional.of(distribution);
+                }
+                else {
+                    if (partitioningHandle.get().equals(SINGLE_DISTRIBUTION) || partitioningHandle.get().equals(FIXED_HASH_DISTRIBUTION)) {
+                        partitioningHandle = Optional.of(distribution);
+                    }
+                }
             }
 
             PartitioningHandle currentPartitioning = this.partitioningHandle.get();
@@ -944,6 +1032,12 @@ public class PlanFragmenter
                 return this;
             }
 
+            if (isCloudTable && !distribution.equals(this.partitioningHandle.get())) {
+                // if current partitioning handle is different from distribution and this is replicated-read, tolerate it.
+                // Postpone the logic to reassignPartitioningHandle routine later
+                return this;
+            }
+
             throw new IllegalStateException(format(
                     "Cannot set distribution to %s. Already set to %s",
                     distribution,
@@ -968,13 +1062,14 @@ public class PlanFragmenter
             return this;
         }
 
-        public FragmentProperties addSourceDistribution(PlanNodeId source, PartitioningHandle distribution, Metadata metadata, Session session)
+        public FragmentProperties addSourceDistribution(PlanNodeId source, PartitioningHandle distribution, Metadata metadata, Session session, boolean isCloudTable)
         {
             requireNonNull(source, "source is null");
             requireNonNull(distribution, "distribution is null");
 
             partitionedSources.add(source);
-            return setDistribution(distribution, metadata, session);
+
+            return setDistribution(distribution, metadata, session, isCloudTable);
         }
 
         public FragmentProperties addChildren(List<SubPlan> children)
@@ -1199,7 +1294,11 @@ public class PlanFragmenter
         @Override
         public GroupedExecutionProperties visitTableScan(TableScanNode node, Void context)
         {
-            Optional<TablePartitioning> tablePartitioning = metadata.getLayout(session, node.getTable()).getTablePartitioning();
+            // replicated reads does not support grouped execution for bucketed table.
+            if (node.getTable().getCanReplicatedReadsForCloudTable()) {
+                return GroupedExecutionProperties.notCapable();
+            }
+            Optional<TablePartitioning> tablePartitioning = metadata.getLayout(session, node.getTable(), false).getTablePartitioning();
             if (!tablePartitioning.isPresent()) {
                 return GroupedExecutionProperties.notCapable();
             }
@@ -1323,7 +1422,7 @@ public class PlanFragmenter
     }
 
     private static final class PartitioningHandleReassigner
-            extends SimplePlanRewriter<Void>
+            extends SimplePlanRewriter<PartitioningHandleReassigner.Context>
     {
         private final PartitioningHandle fragmentPartitioningHandle;
         private final Metadata metadata;
@@ -1336,20 +1435,78 @@ public class PlanFragmenter
             this.session = session;
         }
 
-        @Override
-        public PlanNode visitTableScan(TableScanNode node, RewriteContext<Void> context)
+        private static final class Context
         {
-            PartitioningHandle partitioning = metadata.getLayout(session, node.getTable())
+            private Deque<Boolean> replicatedReadsAllowedQueue = new ArrayDeque<>();
+
+            public void setReplicatedReadsAllowedQueue(boolean joinReplicateReadsAllowed)
+            {
+                this.replicatedReadsAllowedQueue.push(joinReplicateReadsAllowed);
+            }
+
+            public void dequeFromReplicatedReadsAllowedQueue()
+            {
+                this.replicatedReadsAllowedQueue.poll();
+            }
+
+            public boolean getReplicatedReadsAllowed()
+            {
+                if (replicatedReadsAllowedQueue.isEmpty()) {
+                    return false;
+                }
+                return this.replicatedReadsAllowedQueue.peek();
+            }
+        }
+
+        @Override
+        public PlanNode visitJoin(JoinNode node, RewriteContext<Context> context)
+        {
+            if (determineReplicatedReadsJoinAllowed(node, session)) {
+                if (canReplicatedRead(node.getProbe())) {
+                    context.get().setReplicatedReadsAllowedQueue(true);
+                }
+                PlanNode left = context.rewrite(node.getProbe(), context.get());
+                context.get().dequeFromReplicatedReadsAllowedQueue();
+                if (canReplicatedRead(node.getBuild())) {
+                    context.get().setReplicatedReadsAllowedQueue(true);
+                }
+                PlanNode right = context.rewrite(node.getBuild(), context.get());
+                context.get().dequeFromReplicatedReadsAllowedQueue();
+                return new JoinNode(
+                        node.getSourceLocation(),
+                        node.getId(),
+                        node.getType(),
+                        left,
+                        right,
+                        node.getCriteria(),
+                        node.getOutputVariables(),
+                        node.getFilter(),
+                        node.getLeftHashVariable(),
+                        node.getRightHashVariable(),
+                        node.getDistributionType(),
+                        node.getDynamicFilters());
+            }
+
+            return context.defaultRewrite(node, context.get());
+        }
+
+        @Override
+        public PlanNode visitTableScan(TableScanNode node, RewriteContext<Context> context)
+        {
+            boolean isCloudTableReplicated = context.get().getReplicatedReadsAllowed();
+            PartitioningHandle partitioning = metadata.getLayout(session, node.getTable(), isCloudTableReplicated)
                     .getTablePartitioning()
                     .map(TablePartitioning::getPartitioningHandle)
                     .orElse(SOURCE_DISTRIBUTION);
 
-            if (partitioning.equals(fragmentPartitioningHandle)) {
-                // do nothing if the current scan node's partitioning matches the fragment's
+            // if there's a replicated read join and fragmentPartitioningHandle is Source Distribution, need to use alternative table handle.
+            // that's the case of non-bucket join nonpart table, need to create a virtual bucket handle for the table partitioning
+            if (partitioning.equals(fragmentPartitioningHandle) && !isCloudTableReplicated) {
+                // do nothing if the current scan node's partitioning matches the fragment's or is compatible for replicated cloud table
                 return node;
             }
 
-            TableHandle newTableHandle = metadata.getAlternativeTableHandle(session, node.getTable(), fragmentPartitioningHandle);
+            TableHandle newTableHandle = metadata.getAlternativeTableHandle(session, node.getTable(), fragmentPartitioningHandle, isCloudTableReplicated);
             return new TableScanNode(
                     node.getSourceLocation(),
                     node.getId(),
@@ -1384,5 +1541,37 @@ public class PlanFragmenter
         {
             return constants;
         }
+    }
+
+    private static boolean canReplicatedRead(PlanNode node)
+    {
+        if (node instanceof ProjectNode) {
+            return canReplicatedRead(((ProjectNode) node).getSource());
+        }
+        else if (node instanceof FilterNode) {
+            return canReplicatedRead(((FilterNode) node).getSource());
+        }
+        else if (node instanceof ExchangeNode && ((ExchangeNode) node).getScope().isLocal()) {
+            return node.getSources().stream().anyMatch(source -> canReplicatedRead(source));
+        }
+        return (node instanceof TableScanNode) && canReplicatedReadsForSource((TableScanNode) node);
+    }
+
+    private static boolean canReplicatedReadsForSource(TableScanNode tableScanNode)
+    {
+        TableHandle tableHandle = tableScanNode.getTable();
+        return tableHandle.getCanReplicatedReadsForCloudTable();
+    }
+
+    private static boolean determineReplicatedReadsJoinAllowed(JoinNode joinNode, Session session)
+    {
+        if (!joinNode.isCrossJoin() &&
+                joinNode.getDistributionType().isPresent() && joinNode.getDistributionType().get().equals(JoinNode.DistributionType.REPLICATED) &&
+                joinNode.getType() == JoinNode.Type.INNER &&
+                canReplicatedRead(joinNode.getLeft()) &&
+                canReplicatedRead(joinNode.getRight())) {
+            return true;
+        }
+        return false;
     }
 }

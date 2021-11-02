@@ -67,6 +67,12 @@ public class LazySplitSource
     }
 
     @Override
+    public boolean isReplicatedReadsCloudTable()
+    {
+        return supplier.get().isReplicatedReadsCloudTable();
+    }
+
+    @Override
     public boolean isFinished()
     {
         return getDelegate().isFinished();

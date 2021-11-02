@@ -71,6 +71,7 @@ public class FeaturesConfig
     private JoinDistributionType joinDistributionType = JoinDistributionType.AUTOMATIC;
     private DataSize joinMaxBroadcastTableSize = new DataSize(100, MEGABYTE);
     private boolean sizeBasedJoinDistributionTypeEnabled = true;
+    private boolean enableColocatedJoinForDimReplicateTable = true;
     private boolean colocatedJoinsEnabled = true;
     private boolean groupedExecutionEnabled = true;
     private boolean recoverableGroupedExecutionEnabled;
@@ -528,6 +529,11 @@ public class FeaturesConfig
     public boolean isSizeBasedJoinDistributionTypeEnabled()
     {
         return sizeBasedJoinDistributionTypeEnabled;
+    }
+
+    public boolean getEnableColocatedJoinForDimReplicateTable()
+    {
+        return enableColocatedJoinForDimReplicateTable;
     }
 
     public boolean isGroupedExecutionEnabled()

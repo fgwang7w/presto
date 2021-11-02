@@ -115,13 +115,13 @@ public abstract class AbstractMockMetadata
     }
 
     @Override
-    public TableLayout getLayout(Session session, TableHandle handle)
+    public TableLayout getLayout(Session session, TableHandle handle, boolean isCloudTableReplicated)
     {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public TableHandle getAlternativeTableHandle(Session session, TableHandle tableHandle, PartitioningHandle partitioningHandle)
+    public TableHandle getAlternativeTableHandle(Session session, TableHandle tableHandle, PartitioningHandle partitioningHandle, boolean isCloudTableReplicated)
     {
         throw new UnsupportedOperationException();
     }

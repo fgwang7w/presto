@@ -88,6 +88,11 @@ public class TableLayout
         return new TableHandle(connectorId, connectorTableHandle, transactionHandle, Optional.of(layout.getHandle()));
     }
 
+    public boolean getReplicatedReadsCloudTable()
+    {
+        return layout.getIsReplicatedReadsCloudTable();
+    }
+
     public Optional<TablePartitioning> getTablePartitioning()
     {
         return layout.getTablePartitioning()

@@ -288,6 +288,7 @@ import static com.facebook.presto.hive.HiveUtil.translateHiveUnsupportedTypesFor
 import static com.facebook.presto.hive.HiveUtil.verifyPartitionTypeSupported;
 import static com.facebook.presto.hive.HiveWriteUtils.checkTableIsWritable;
 import static com.facebook.presto.hive.HiveWriteUtils.isFileCreatedByQuery;
+import static com.facebook.presto.hive.HiveWriteUtils.isS3FileSystem;
 import static com.facebook.presto.hive.HiveWriteUtils.isWritableType;
 import static com.facebook.presto.hive.HiveWriterFactory.computeBucketedFileName;
 import static com.facebook.presto.hive.HiveWriterFactory.getFileExtension;
@@ -2770,7 +2771,13 @@ public class HiveMetadata
     }
 
     @Override
-    public ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle layoutHandle)
+    public ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle)
+    {
+        return getTableLayout(session, handle, false);
+    }
+
+    @Override
+    public ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle layoutHandle, boolean isReplicatedReadsTable)
     {
         HiveTableLayoutHandle hiveLayoutHandle = (HiveTableLayoutHandle) layoutHandle;
         List<ColumnHandle> partitionColumns = ImmutableList.copyOf(hiveLayoutHandle.getPartitionColumns());
@@ -2790,6 +2797,8 @@ public class HiveMetadata
         MetastoreContext metastoreContext = getMetastoreContext(session);
         Table table = metastore.getTable(metastoreContext, tableName.getSchemaName(), tableName.getTableName())
                 .orElseThrow(() -> new TableNotFoundException(tableName));
+
+        boolean canReplicatedReadsCloudTable = canPerformReplicatedReads(tableName, hiveLayoutHandle, session);
         // never ignore table bucketing for temporary tables as those are created such explicitly by the engine request
         boolean bucketExecutionEnabled = table.getTableType().equals(TEMPORARY_TABLE) || isBucketExecutionEnabled(session);
         if (bucketExecutionEnabled && hiveLayoutHandle.getBucketHandle().isPresent()) {
@@ -2835,6 +2844,30 @@ public class HiveMetadata
                     hiveBucketHandle.getColumns().stream()
                             .map(ColumnHandle.class::cast)
                             .collect(toImmutableList())));
+        }
+
+        // NOTE: isReplicatedReadsTable can only be true when plan fragmenter is in the process to handle reassignment
+        // of fragment partitioning by PartitioningHandleReassigner. The flag is on when it's decided to go with replicated reads.
+        // If the table layout does not include hive bucket handle, create a virtual bucket handle to allow replicate reads
+        // upon this table instead of using SOURCE_DISTRIBUTION.
+        // This is because Presto does not allow multiple LazySplitSource within a single fragment
+        if (isReplicatedReadsTable && !hiveLayoutHandle.getBucketHandle().isPresent()) {
+            // Special handling for DIM replicated table to bind it with a hive partitioning handle
+            HiveBasicStatistics basicStatistics = MetastoreUtil.getHiveBasicStatistics(table.getParameters());
+            int bucketCount = basicStatistics.getFileCount().isPresent() ? (int) basicStatistics.getFileCount().getAsLong() : 1;
+            OptionalInt maxCompatibleBucketCount = OptionalInt.empty();
+
+            List<HiveColumnHandle> columnHandles = ((HiveTableLayoutHandle) layoutHandle).getRequestedColumns().get().stream().collect(toImmutableList());
+            //List<HiveType> hiveTypes = table.getDataColumns().stream().map(Column::getType).collect(toImmutableList());
+            List<HiveType> hiveTypes = columnHandles.stream().map(HiveColumnHandle::getHiveType).collect(toImmutableList());
+            HivePartitioningHandle partitioningHandle = createHiveCompatiblePartitioningHandle(
+                    bucketCount,
+                    hiveTypes,
+                    maxCompatibleBucketCount,
+                    Optional.of(canReplicatedReadsCloudTable));
+            tablePartitioning = Optional.of(new ConnectorTablePartitioning(
+                    partitioningHandle,
+                    ImmutableList.copyOf(columnHandles)));
         }
 
         TupleDomain<ColumnHandle> predicate;
@@ -2886,7 +2919,24 @@ public class HiveMetadata
                 streamPartitionColumns,
                 discretePredicates,
                 localPropertyBuilder.build(),
-                Optional.of(hiveLayoutHandle.getRemainingPredicate()));
+                Optional.of(hiveLayoutHandle.getRemainingPredicate()),
+                canReplicatedReadsCloudTable);
+    }
+
+    protected boolean canPerformReplicatedReads(SchemaTableName tableName, HiveTableLayoutHandle hiveLayoutHandle, ConnectorSession session)
+    {
+        String tablePath = hiveLayoutHandle.getTablePath();
+        // temporary table may not have physical location
+        if (tablePath.isEmpty()) {
+            return false;
+        }
+
+        HdfsContext context = new HdfsContext(session, tableName.getSchemaName(), tableName.getTableName(), tablePath, false);
+        // only when property enforces to require high bandwidth storage and it is on S3 file system, replicated-read is allowed
+        if (isS3FileSystem(context, hdfsEnvironment, new Path(tablePath))) {
+            return true;
+        }
+        return false;
     }
 
     @Override
@@ -2941,7 +2991,30 @@ public class HiveMetadata
         if (!leftHandle.getBucketFunctionType().equals(rightHandle.getBucketFunctionType()) ||
                 !leftHandle.getHiveTypes().equals(rightHandle.getHiveTypes()) ||
                 !leftHandle.getTypes().equals(rightHandle.getTypes())) {
-            return false;
+            {
+                // Replicated-reads is considered as a Dim Table.
+                // Here we need to check if there's any different in HiveType for DIM table
+                // e.g.
+                // DIM{c1 bigint, c2 bigint} joins fact{c1 bigint}.
+                // DIM table may have HiveTypes in a list of {bigint, bigint}, where fact table has a {bigint}
+                // we can allow DIM table partitioned over fact
+                // All DIM table includes HiveTypes for all columns so we can tolerate the inconsistency for compatibility
+                // TODO: need to validate when join key is over a CAST
+                if ((leftHandle.isReplicatedReadsTable() || rightHandle.isReplicatedReadsTable()) && !leftHandle.getHiveTypes().equals(rightHandle.getHiveTypes())) {
+                    if (leftHandle.isReplicatedReadsTable() && !leftHandle.getHiveTypes().get().contains(rightHandle.getHiveTypes().get())) {
+                        // right side must has a matching type to any of the left, or something goes wrong...
+                        return false;
+                    }
+                    if (rightHandle.isReplicatedReadsTable() && !rightHandle.getHiveTypes().get().contains(leftHandle.getHiveTypes().get())) {
+                        // left side must has a matching type to any of the right, or something goes wrong...
+                        return false;
+                    }
+                    return true;
+                }
+                else {
+                    return false;
+                }
+            }
         }
 
         int leftBucketCount = leftHandle.getBucketCount();
@@ -2964,30 +3037,72 @@ public class HiveMetadata
         return OptionalInt.of(Math.min(left.getAsInt(), right.getAsInt()));
     }
 
+    private HiveBucketHandle determineHiveBubcketHandleForDim(List<HivePartition> partiions, List<HiveColumnHandle> hiveColumnHandles, HiveTableLayoutHandle tableLayoutHandle)
+    {
+        int readBucketCountForDim = 1;
+        HiveBasicStatistics basicStatistics = MetastoreUtil.getHiveBasicStatistics(tableLayoutHandle.getTableParameters());
+        int tableBucketCountForDim = basicStatistics.getFileCount().isPresent() ? (int) basicStatistics.getFileCount().getAsLong() : readBucketCountForDim;
+        return createVirtualBucketHandle(tableBucketCountForDim);
+    }
     @Override
-    public ConnectorTableLayoutHandle getAlternativeLayoutHandle(ConnectorSession session, ConnectorTableLayoutHandle tableLayoutHandle, ConnectorPartitioningHandle partitioningHandle)
+    public ConnectorTableLayoutHandle getAlternativeLayoutHandle(ConnectorSession session, ConnectorTableLayoutHandle tableLayoutHandle, ConnectorPartitioningHandle partitioningHandle, boolean isReplicatedReadsTableRequest)
     {
         HiveTableLayoutHandle hiveLayoutHandle = (HiveTableLayoutHandle) tableLayoutHandle;
-        HivePartitioningHandle hivePartitioningHandle = (HivePartitioningHandle) partitioningHandle;
 
-        checkArgument(hiveLayoutHandle.getBucketHandle().isPresent(), "Hive connector only provides alternative layout for bucketed table");
-        HiveBucketHandle bucketHandle = hiveLayoutHandle.getBucketHandle().get();
-        ImmutableList<HiveType> bucketTypes = bucketHandle.getColumns().stream().map(HiveColumnHandle::getHiveType).collect(toImmutableList());
-        Optional<List<HiveType>> hiveTypes = hivePartitioningHandle.getHiveTypes();
-        checkArgument(
-                hivePartitioningHandle.getBucketFunctionType().equals(HIVE_COMPATIBLE),
-                "bucketFunctionType is expected to be HIVE_COMPATIBLE, got: %s",
-                hivePartitioningHandle.getBucketFunctionType());
-        checkArgument(
-                hiveTypes.get().equals(bucketTypes),
-                "Types from the new PartitioningHandle (%s) does not match the TableLayoutHandle (%s)",
-                hiveTypes.get(),
-                bucketTypes);
-        int largerBucketCount = Math.max(bucketHandle.getTableBucketCount(), hivePartitioningHandle.getBucketCount());
-        int smallerBucketCount = Math.min(bucketHandle.getTableBucketCount(), hivePartitioningHandle.getBucketCount());
-        checkArgument(
-                largerBucketCount % smallerBucketCount == 0 && Integer.bitCount(largerBucketCount / smallerBucketCount) == 1,
-                "The requested partitioning is not a valid alternative for the table layout");
+        SchemaTableName schemaTableName = hiveLayoutHandle.getSchemaTableName();
+        boolean canReplicatedReadsCloudTable = canPerformReplicatedReads(schemaTableName, hiveLayoutHandle, session);
+
+        HivePartitioningHandle hivePartitioningHandle = (HivePartitioningHandle) partitioningHandle;
+        boolean createVirtualBucketHandleForDim = false;
+
+        if (isReplicatedReadsTableRequest) {
+            // Special handling for DIM replicated table which may have been bound with a hive partitioning handle by PlanFragmenter.ReassignPartitioningHandle
+            Table table = metastore.getTable(getMetastoreContext(session), schemaTableName.getSchemaName(), schemaTableName.getTableName())
+                    .orElseThrow(() -> new TableNotFoundException(schemaTableName));
+            HiveBasicStatistics basicStatistics = MetastoreUtil.getHiveBasicStatistics(table.getParameters());
+            int bucketCount = basicStatistics.getFileCount().isPresent() ? (int) basicStatistics.getFileCount().getAsLong() : 1;
+            OptionalInt maxCompatibleBucketCount = OptionalInt.empty();
+            //List<HiveType> hiveTypes = table.getDataColumns().stream().map(Column::getType).collect(toImmutableList());
+            List<HiveColumnHandle> columnHandles = hiveLayoutHandle.getRequestedColumns().get().stream().collect(toImmutableList());
+            List<HiveType> hiveTypes = columnHandles.stream().map(HiveColumnHandle::getHiveType).collect(toImmutableList());
+            hivePartitioningHandle = createHiveCompatiblePartitioningHandle(
+                    bucketCount,
+                    hiveTypes,
+                    maxCompatibleBucketCount,
+                    Optional.of(canReplicatedReadsCloudTable));
+            createVirtualBucketHandleForDim = true;
+        }
+
+        HiveBucketHandle hiveBucketHandle;
+
+        List<HivePartition> partitions = hiveLayoutHandle.getPartitions().get();
+        if (canReplicatedReadsCloudTable && (isReplicatedReadsTableRequest || createVirtualBucketHandleForDim)) {
+            List<HiveColumnHandle> hiveColumnHandles = hiveLayoutHandle.getRequestedColumns().get().stream().collect(toImmutableList());
+            hiveBucketHandle = hiveLayoutHandle.getBucketHandle().isPresent() ?
+                    hiveLayoutHandle.getBucketHandle().get() :
+                    determineHiveBubcketHandleForDim(partitions, hiveColumnHandles, (HiveTableLayoutHandle) tableLayoutHandle);
+        }
+        else {
+            checkArgument(hiveLayoutHandle.getBucketHandle().isPresent(), "Hive connector only provides alternative layout for bucketed table");
+            HiveBucketHandle bucketHandle = hiveLayoutHandle.getBucketHandle().get();
+            ImmutableList<HiveType> bucketTypes = bucketHandle.getColumns().stream().map(HiveColumnHandle::getHiveType).collect(toImmutableList());
+            Optional<List<HiveType>> hiveTypes = hivePartitioningHandle.getHiveTypes();
+            checkArgument(
+                    hivePartitioningHandle.getBucketFunctionType().equals(HIVE_COMPATIBLE),
+                    "bucketFunctionType is expected to be HIVE_COMPATIBLE, got: %s",
+                    hivePartitioningHandle.getBucketFunctionType());
+            checkArgument(
+                    hiveTypes.get().equals(bucketTypes),
+                    "Types from the new PartitioningHandle (%s) does not match the TableLayoutHandle (%s)",
+                    hiveTypes.get(),
+                    bucketTypes);
+            int largerBucketCount = Math.max(bucketHandle.getTableBucketCount(), hivePartitioningHandle.getBucketCount());
+            int smallerBucketCount = Math.min(bucketHandle.getTableBucketCount(), hivePartitioningHandle.getBucketCount());
+            checkArgument(
+                    largerBucketCount % smallerBucketCount == 0 && Integer.bitCount(largerBucketCount / smallerBucketCount) == 1,
+                    "The requested partitioning is not a valid alternative for the table layout");
+            hiveBucketHandle = new HiveBucketHandle(bucketHandle.getColumns(), bucketHandle.getTableBucketCount(), hivePartitioningHandle.getBucketCount());
+        }
 
         return new HiveTableLayoutHandle(
                 hiveLayoutHandle.getSchemaTableName(),
@@ -3000,7 +3115,7 @@ public class HiveMetadata
                 hiveLayoutHandle.getRemainingPredicate(),
                 hiveLayoutHandle.getPredicateColumns(),
                 hiveLayoutHandle.getPartitionColumnPredicate(),
-                Optional.of(new HiveBucketHandle(bucketHandle.getColumns(), bucketHandle.getTableBucketCount(), hivePartitioningHandle.getBucketCount())),
+                Optional.of(hiveBucketHandle),
                 hiveLayoutHandle.getBucketFilter(),
                 hiveLayoutHandle.isPushdownFilterEnabled(),
                 hiveLayoutHandle.getLayoutString(),

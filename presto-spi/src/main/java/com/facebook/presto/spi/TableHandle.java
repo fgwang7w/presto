@@ -36,6 +36,7 @@ public final class TableHandle
 
     // This is not serializable; for local execution only
     private final Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter;
+    private final boolean canReplicatedReadsForCloudTable;
 
     @JsonCreator
     public TableHandle(
@@ -54,11 +55,23 @@ public final class TableHandle
             Optional<ConnectorTableLayoutHandle> layout,
             Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter)
     {
+        this(connectorId, connectorHandle, transaction, layout, dynamicFilter, false);
+    }
+
+    private TableHandle(
+            ConnectorId connectorId,
+            ConnectorTableHandle connectorHandle,
+            ConnectorTransactionHandle transaction,
+            Optional<ConnectorTableLayoutHandle> layout,
+            Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter,
+            boolean canReplicatedReadsForCloudTable)
+    {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.connectorHandle = requireNonNull(connectorHandle, "connectorHandle is null");
         this.transaction = requireNonNull(transaction, "transaction is null");
         this.layout = requireNonNull(layout, "layout is null");
         this.dynamicFilter = requireNonNull(dynamicFilter, "dynamicFilter is null");
+        this.canReplicatedReadsForCloudTable = canReplicatedReadsForCloudTable;
     }
 
     @JsonProperty
@@ -99,6 +112,16 @@ public final class TableHandle
         return new TableHandle(connectorId, connectorHandle, transaction, layout, Optional.of(dynamicFilter));
     }
 
+    public TableHandle setCanReplicatedReadsForCloudTable(boolean canReplicatedReadsForCloudTable)
+    {
+        return new TableHandle(connectorId, connectorHandle, transaction, layout, dynamicFilter, canReplicatedReadsForCloudTable);
+    }
+
+    public boolean getCanReplicatedReadsForCloudTable()
+    {
+        return canReplicatedReadsForCloudTable;
+    }
+
     @Override
     public boolean equals(Object obj)
     {
@@ -133,6 +156,7 @@ public final class TableHandle
         stringBuilder.append("connectorId='").append(connectorId).append('\'');
         stringBuilder.append(", connectorHandle='").append(connectorHandle).append('\'');
         stringBuilder.append(", layout='").append(layout).append('\'');
+        stringBuilder.append(", canReplicatedForColocatedBroadcastJoin='").append(canReplicatedReadsForCloudTable).append('\'');
         stringBuilder.append('}');
         return stringBuilder.toString();
     }

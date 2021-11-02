@@ -270,7 +270,7 @@ public class HivePartialAggregationPushdown
                     oldTableHandle.getConnectorId(),
                     hiveTableHandle,
                     oldTableHandle.getTransaction(),
-                    Optional.of(newTableLayoutHandle));
+                    Optional.of(newTableLayoutHandle)).setCanReplicatedReadsForCloudTable(oldTableHandle.getCanReplicatedReadsForCloudTable());
 
             return Optional.of(new TableScanNode(
                     oldTableScanNode.getSourceLocation(),

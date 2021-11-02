@@ -64,7 +64,7 @@ public class TestGraphvizPrinter
             TupleDomain.all(),
             TupleDomain.all());
     private static final String TEST_TABLE_SCAN_NODE_INNER_OUTPUT = format(
-            "label=\"{TableScan | [TableHandle \\{connectorId='%s', connectorHandle='%s', layout='Optional.empty'\\}]|Estimates: \\{rows: ? (0B), cpu: ?, memory: ?, network: ?\\}\n" +
+            "label=\"{TableScan | [TableHandle \\{connectorId='%s', connectorHandle='%s', layout='Optional.empty', isCloudTable='Optional.empty', canReplicatedForColocatedBroadcastJoin='Optional.empty'\\}]|Estimates: \\{rows: ? (0B), cpu: ?, memory: ?, network: ?\\}\n" +
                     "}\", style=\"rounded, filled\", shape=record, fillcolor=deepskyblue",
             TEST_CONNECTOR_ID,
             TEST_CONNECTOR_TABLE_HANDLE);

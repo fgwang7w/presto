@@ -164,7 +164,7 @@ public class MetadataQueryOptimizer
                 layout = metadata.getLayout(session, tableScan.getTable(), Constraint.alwaysTrue(), Optional.empty()).getLayout();
             }
             else {
-                layout = metadata.getLayout(session, tableScan.getTable());
+                layout = metadata.getLayout(session, tableScan.getTable(), false);
             }
 
             if (!layout.getDiscretePredicates().isPresent()) {

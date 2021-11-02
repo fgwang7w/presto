@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql.planner.optimizations;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.connector.system.GlobalSystemConnector;
@@ -23,6 +24,7 @@ import com.facebook.presto.spi.GroupingProperty;
 import com.facebook.presto.spi.LocalProperty;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SortingProperty;
+import com.facebook.presto.spi.TableHandle;
 import com.facebook.presto.spi.WarningCollector;
 import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
 import com.facebook.presto.spi.plan.AggregationNode;
@@ -83,6 +85,7 @@ import com.google.common.collect.ImmutableListMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.ListMultimap;
+import com.google.common.collect.Lists;
 import com.google.common.collect.SetMultimap;
 
 import java.util.ArrayList;
@@ -155,6 +158,7 @@ public class AddExchanges
     private final Metadata metadata;
     private final PartitioningProviderManager partitioningProviderManager;
 
+    private static final Logger logger = Logger.get(AddExchanges.class);
     public AddExchanges(Metadata metadata, SqlParser parser, PartitioningProviderManager partitioningProviderManager)
     {
         this.metadata = requireNonNull(metadata, "metadata is null");
@@ -768,6 +772,15 @@ public class AddExchanges
             JoinNode.DistributionType distributionType = node.getDistributionType().orElseThrow(() -> new IllegalArgumentException("distributionType not yet set"));
 
             if (distributionType == JoinNode.DistributionType.REPLICATED) {
+                /** Overall Processing sequence:
+                 * 1. Handle broadcast join using replicated-reads execution strategy for cloud dimension tables
+                 * 2. Handle general case when no cloud tables are involved
+                 */
+                boolean canLeftReplicate = canReplicatedRead(node.getProbe());
+                boolean canRightReplicate = canReplicatedRead(node.getBuild());
+                if ((canLeftReplicate && canRightReplicate) && node.getType() == JoinNode.Type.INNER) {
+                    return planReplicatedReadsJoin(node);
+                }
                 PlanWithProperties left = accept(node.getLeft(), PreferredProperties.any());
 
                 // use partitioned join if probe side is naturally partitioned on join symbols (e.g: because of aggregation)
@@ -781,6 +794,35 @@ public class AddExchanges
             else {
                 return planPartitionedJoin(node, leftVariables, rightVariables);
             }
+        }
+
+        private PlanWithProperties planReplicatedReadsJoin(JoinNode joinNode)
+        {
+            List<VariableReferenceExpression> leftVariables = Lists.transform(joinNode.getCriteria(), JoinNode.EquiJoinClause::getLeft);
+            List<VariableReferenceExpression> rightVariables = Lists.transform(joinNode.getCriteria(), JoinNode.EquiJoinClause::getRight);
+
+            PlanWithProperties probe = joinNode.getLeft().accept(this, PreferredProperties.partitioned(ImmutableSet.copyOf(leftVariables)));
+            PlanWithProperties build = joinNode.getRight().accept(this, PreferredProperties.partitioned(ImmutableSet.copyOf(rightVariables)));
+
+            JoinNode.DistributionType distributionType = JoinNode.DistributionType.REPLICATED;
+            return buildJoin(joinNode, probe, build, distributionType);
+        }
+
+        public boolean canReplicatedRead(PlanNode node)
+        {
+            if (node instanceof ProjectNode) {
+                return canReplicatedRead(((ProjectNode) node).getSource());
+            }
+            else if (node instanceof FilterNode) {
+                return canReplicatedRead(((FilterNode) node).getSource());
+            }
+            return (node instanceof TableScanNode) && canReplicatedReadsCloudTable((TableScanNode) node);
+        }
+
+        private boolean canReplicatedReadsCloudTable(TableScanNode tableScanNode)
+        {
+            TableHandle tableHandle = tableScanNode.getTable();
+            return tableHandle.getCanReplicatedReadsForCloudTable();
         }
 
         private PlanWithProperties planPartitionedJoin(JoinNode node, List<VariableReferenceExpression> leftVariables, List<VariableReferenceExpression> rightVariables)
