@@ -172,8 +172,7 @@ public class DeltaMetadata
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
-                ImmutableList.of(),
-                Optional.empty());
+                ImmutableList.of());
 
         return ImmutableList.of(new ConnectorTableLayoutResult(newLayout, unenforcedPredicate));
     }

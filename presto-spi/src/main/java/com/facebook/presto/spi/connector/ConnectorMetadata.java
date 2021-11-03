@@ -116,7 +116,14 @@ public interface ConnectorMetadata
             Constraint<ColumnHandle> constraint,
             Optional<Set<ColumnHandle>> desiredColumns);
 
-    ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle);
+    default ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle)
+    {
+        return getTableLayout(session, handle, false);
+    }
+    default ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle, boolean isDimTableReplicated)
+    {
+        return new ConnectorTableLayout(handle);
+    }
 
     /**
      * Return a table layout handle whose partitioning is converted to the provided partitioning handle,
@@ -125,7 +132,7 @@ public interface ConnectorMetadata
      * the original partitioning handle associated with the provided table layout handle,
      * as promised by {@link #getCommonPartitioningHandle}.
      */
-    default ConnectorTableLayoutHandle getAlternativeLayoutHandle(ConnectorSession session, ConnectorTableLayoutHandle tableLayoutHandle, ConnectorPartitioningHandle partitioningHandle)
+    default ConnectorTableLayoutHandle getAlternativeLayoutHandle(ConnectorSession session, ConnectorTableLayoutHandle tableLayoutHandle, ConnectorPartitioningHandle partitioningHandle, boolean isDimTableReplicated)
     {
         throw new PrestoException(GENERIC_INTERNAL_ERROR, "ConnectorMetadata getCommonPartitioningHandle() is implemented without getAlternativeLayout()");
     }

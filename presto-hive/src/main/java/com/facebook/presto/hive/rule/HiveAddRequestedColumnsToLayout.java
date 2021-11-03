@@ -100,7 +100,7 @@ public class HiveAddRequestedColumnsToLayout
                             tableScan.getTable().getConnectorId(),
                             tableScan.getTable().getConnectorHandle(),
                             tableScan.getTable().getTransaction(),
-                            Optional.of(hiveLayoutWithDesiredColumns)),
+                            Optional.of(hiveLayoutWithDesiredColumns)).setReplicatedReadsCloudTableHandle(tableScan.getTable().getIsCloudTable()),
                     tableScan.getOutputVariables(),
                     tableScan.getAssignments(),
                     tableScan.getTableConstraints(),
