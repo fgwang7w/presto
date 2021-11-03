@@ -162,6 +162,8 @@ public class HiveClientConfig
     private boolean collectColumnStatisticsOnWrite;
     private boolean partitionStatisticsBasedOptimizationEnabled;
 
+    private boolean overwriteHighBandwidthStorageForReplicatedReads;
+
     private boolean s3SelectPushdownEnabled;
     private int s3SelectPushdownMaxConnections = 500;
     private boolean orderBasedExecutionEnabled;
@@ -757,6 +759,19 @@ public class HiveClientConfig
     {
         this.s3FileSystemType = s3FileSystemType;
         return this;
+    }
+
+    @Config("hive.overwrite-high-bandwidth-storage-for-replicated-reads")
+    @ConfigDescription("Overwrite high bandwidth storage requirement for replicated reads")
+    public HiveClientConfig setOverwriteHighBandwidthStorageForReplicatedReads(boolean overwriteHighBandwidthStorageForReplicatedReads)
+    {
+        this.overwriteHighBandwidthStorageForReplicatedReads = overwriteHighBandwidthStorageForReplicatedReads;
+        return this;
+    }
+
+    public boolean isOverwriteHighBandwidthStorageForReplicatedReads()
+    {
+        return overwriteHighBandwidthStorageForReplicatedReads;
     }
 
     public boolean isUseOrcColumnNames()

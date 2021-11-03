@@ -214,6 +214,7 @@ import static com.facebook.presto.hive.HiveSessionProperties.getCompressionCodec
 import static com.facebook.presto.hive.HiveSessionProperties.getHiveStorageFormat;
 import static com.facebook.presto.hive.HiveSessionProperties.getInsertExistingPartitionsBehavior;
 import static com.facebook.presto.hive.HiveSessionProperties.getOrcCompressionCodec;
+import static com.facebook.presto.hive.HiveSessionProperties.getOverwriteHighBandwidthStorageForReplicatedReads;
 import static com.facebook.presto.hive.HiveSessionProperties.getTemporaryTableCompressionCodec;
 import static com.facebook.presto.hive.HiveSessionProperties.getTemporaryTableSchema;
 import static com.facebook.presto.hive.HiveSessionProperties.getTemporaryTableStorageFormat;
@@ -2917,7 +2918,7 @@ public class HiveMetadata
         HdfsContext context = new HdfsContext(session, tableName.getSchemaName(), tableName.getTableName(), tablePath, false);
 
         // only when property enforces to require high bandwidth storage and it is on S3 file system, replicated-read is allowed
-        if (isS3FileSystem(context, hdfsEnvironment, new Path(tablePath))) {
+        if (isS3FileSystem(context, hdfsEnvironment, new Path(tablePath)) || getOverwriteHighBandwidthStorageForReplicatedReads(session)) {
             return true;
         }
         return false;

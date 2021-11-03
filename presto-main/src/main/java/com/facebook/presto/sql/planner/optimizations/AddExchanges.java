@@ -100,6 +100,7 @@ import java.util.Set;
 import java.util.function.Function;
 
 import static com.facebook.presto.SystemSessionProperties.getAggregationPartitioningMergingStrategy;
+import static com.facebook.presto.SystemSessionProperties.getEnableColocatedJoinForDimReplicateTable;
 import static com.facebook.presto.SystemSessionProperties.getExchangeMaterializationStrategy;
 import static com.facebook.presto.SystemSessionProperties.getHashPartitionCount;
 import static com.facebook.presto.SystemSessionProperties.getPartialMergePushdownStrategy;
@@ -777,7 +778,7 @@ public class AddExchanges
                  * 1. Handle broadcast join using replicated-reads execution strategy for cloud dimension tables
                  * 2. Handle general case when no cloud tables are involved
                  */
-                if ((canReplicatedRead(node.getBuild()) || canReplicatedRead(node.getProbe()))) {
+                if (getEnableColocatedJoinForDimReplicateTable(session) && (canReplicatedRead(node.getBuild()) || canReplicatedRead(node.getProbe()))) {
                     return planReplicatedReadsJoin(node);
                 }
                 PlanWithProperties left = node.getLeft().accept(this, PreferredProperties.any());

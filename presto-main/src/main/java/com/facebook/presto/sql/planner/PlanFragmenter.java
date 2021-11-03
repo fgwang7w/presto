@@ -98,7 +98,9 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+
 import static com.facebook.presto.SystemSessionProperties.GROUPED_EXECUTION;
+import static com.facebook.presto.SystemSessionProperties.getEnableColocatedJoinForDimReplicateTable;
 import static com.facebook.presto.SystemSessionProperties.getExchangeMaterializationStrategy;
 import static com.facebook.presto.SystemSessionProperties.getQueryMaxStageCount;
 import static com.facebook.presto.SystemSessionProperties.getTaskPartitionedWriterCount;
@@ -1554,7 +1556,9 @@ public class PlanFragmenter
 
     private static boolean isReplicatedReadsJoin(PlanNode node, JoinNode.DistributionType distributionType, Session session)
     {
-        if ((canReplicatedRead(node)) && distributionType.equals(JoinNode.DistributionType.REPLICATED)) {
+        if (getEnableColocatedJoinForDimReplicateTable(session) &&
+                (canReplicatedRead(node)) &&
+                distributionType.equals(JoinNode.DistributionType.REPLICATED)) {
             return true;
         }
         else {

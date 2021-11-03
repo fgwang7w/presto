@@ -140,6 +140,7 @@ public final class HiveSessionProperties
     public static final String FILE_SPLITTABLE = "file_splittable";
     private static final String HUDI_METADATA_ENABLED = "hudi_metadata_enabled";
     private static final String READ_TABLE_CONSTRAINTS = "read_table_constraints";
+    public static final String OVERWRITE_HIGH_BANDWIDTH_STORAGE_FOR_REPLICATED_READS = "overwrite_high_bandwidth_storage_for_replicated_reads";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -568,6 +569,11 @@ public final class HiveSessionProperties
                         "Enable manifest verification",
                         hiveClientConfig.isManifestVerificationEnabled(),
                         false),
+                booleanProperty(
+                        OVERWRITE_HIGH_BANDWIDTH_STORAGE_FOR_REPLICATED_READS,
+                        "high bandwidth for multiple connections to retrieve data from storage is required for replicated-reads strategy",
+                        hiveClientConfig.isOverwriteHighBandwidthStorageForReplicatedReads(),
+                        true),
                 stringProperty(
                         NEW_PARTITION_USER_SUPPLIED_PARAMETER,
                         "\"user_supplied\" parameter added to all newly created partitions",
@@ -1175,5 +1181,10 @@ public final class HiveSessionProperties
     public static boolean isReadTableConstraints(ConnectorSession session)
     {
         return session.getProperty(READ_TABLE_CONSTRAINTS, Boolean.class);
+    }
+
+    public static Boolean getOverwriteHighBandwidthStorageForReplicatedReads(ConnectorSession session)
+    {
+        return session.getProperty(OVERWRITE_HIGH_BANDWIDTH_STORAGE_FOR_REPLICATED_READS, Boolean.class);
     }
 }
