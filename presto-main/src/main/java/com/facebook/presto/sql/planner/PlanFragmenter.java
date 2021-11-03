@@ -528,16 +528,16 @@ public class PlanFragmenter
         @Override
         public PlanNode visitTableScan(TableScanNode node, RewriteContext<FragmentProperties> context)
         {
-            boolean isDimTableReplicated = context.get().isReplicatedReadsAllowedPresent() && context.get().getReplicatedReadsAllowed();
+            boolean isCloudTableReplicated = context.get().isReplicatedReadsAllowedPresent() && context.get().getReplicatedReadsAllowed();
 
-            PartitioningHandle partitioning = metadata.getLayout(session, node.getTable(), isDimTableReplicated)
+            PartitioningHandle partitioning = metadata.getLayout(session, node.getTable(), isCloudTableReplicated)
                     .getTablePartitioning()
                     .map(TablePartitioning::getPartitioningHandle)
                     .orElse(SOURCE_DISTRIBUTION);
             // if replicated read join and the partitioning is source, need to adjust the table handle now
             // before reassignpartition because it will be too late once the fragment partitioning is determined here
 
-            context.get().addSourceDistribution(node.getId(), partitioning, metadata, session, isDimTableReplicated);
+            context.get().addSourceDistribution(node.getId(), partitioning, metadata, session, isCloudTableReplicated);
             return context.defaultRewrite(node, context.get());
         }
 
@@ -967,7 +967,7 @@ public class PlanFragmenter
                 return this;
             }
 
-            // replicated dim table already single
+            // replicated cloud table already single
             if (partitioningHandle.isPresent() && (partitioningHandle.get().getConnectorHandle().isCloudTable())) {
                 return this;
             }
@@ -1513,7 +1513,7 @@ public class PlanFragmenter
             // if there's a replicated read join and fragmentPartitioningHandle is Source Distribution, need to use alternative table handle.
             // that's the case of non-bucket join nonpart table, need to create a virtual bucket handle for the table partitioning
             if (partitioning.equals(fragmentPartitioningHandle) && !isCloudTableReplicated) {
-                // do nothing if the current scan node's partitioning matches the fragment's or is compatible for replicated dim
+                // do nothing if the current scan node's partitioning matches the fragment's or is compatible for replicated cloud table
                 return node;
             }
 

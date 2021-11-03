@@ -415,19 +415,20 @@ public class MetadataManager
     }
 
     @Override
-    public TableHandle getAlternativeTableHandle(Session session, TableHandle tableHandle, PartitioningHandle partitioningHandle, boolean isDimTableReplicated)
+    public TableHandle getAlternativeTableHandle(Session session, TableHandle tableHandle, PartitioningHandle partitioningHandle, boolean isCloudTableReplicated)
     {
         ConnectorId connectorId = tableHandle.getConnectorId();
-        if (!isDimTableReplicated) {
+        if (!isCloudTableReplicated) {
             checkArgument(partitioningHandle.getConnectorId().isPresent(), "Expect partitioning handle from connector, got system partitioning handle");
             connectorId = partitioningHandle.getConnectorId().get();
             checkArgument(connectorId.equals(tableHandle.getConnectorId()), "ConnectorId of tableLayoutHandle and partitioningHandle does not match");
         }
         CatalogMetadata catalogMetadata = getCatalogMetadata(session, connectorId);
         ConnectorMetadata metadata = catalogMetadata.getMetadataFor(connectorId);
-        ConnectorTableLayoutHandle newTableLayoutHandle = metadata.getAlternativeLayoutHandle(session.toConnectorSession(connectorId), tableHandle.getLayout().get(), partitioningHandle.getConnectorHandle(), isDimTableReplicated);
+        ConnectorTableLayoutHandle newTableLayoutHandle = metadata.getAlternativeLayoutHandle(session.toConnectorSession(connectorId), tableHandle.getLayout().get(), partitioningHandle.getConnectorHandle(), isCloudTableReplicated);
+        boolean canReplicatedReadsCloudTable = tableHandle.getIsCloudTable().get().booleanValue() && isCloudTableReplicated;
         return new TableHandle(tableHandle.getConnectorId(), tableHandle.getConnectorHandle(), tableHandle.getTransaction(), Optional.of(newTableLayoutHandle))
-                .setReplicatedReadsCloudTableHandle(Optional.of(tableHandle.getIsCloudTable().get().booleanValue() && isDimTableReplicated));
+                .setReplicatedReadsCloudTableHandle(Optional.of(tableHandle.getIsCloudTable().get()), Optional.of(canReplicatedReadsCloudTable));
     }
 
     @Override
