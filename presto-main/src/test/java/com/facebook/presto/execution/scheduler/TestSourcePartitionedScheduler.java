@@ -337,7 +337,7 @@ public class TestSourcePartitionedScheduler
             StageScheduler scheduler = newSourcePartitionedSchedulerAsStageScheduler(
                     stage,
                     TABLE_SCAN_NODE_ID,
-                    new ConnectorAwareSplitSource(CONNECTOR_ID, TestingTransactionHandle.create(), createFixedSplitSource(20, TestingSplit::createRemoteSplit)),
+                    new ConnectorAwareSplitSource(CONNECTOR_ID, TestingTransactionHandle.create(), new TableHandle(CONNECTOR_ID, new TestingTableHandle(), TestingTransactionHandle.create(), Optional.empty()), createFixedSplitSource(20, TestingSplit::createRemoteSplit)),
                     new DynamicSplitPlacementPolicy(nodeScheduler.createNodeSelector(TestingSession.testSessionBuilder().build(), CONNECTOR_ID), stage::getAllTasks),
                     2);
             scheduler.schedule();
@@ -475,7 +475,7 @@ public class TestSourcePartitionedScheduler
                 new ThrowingNodeTtlFetcherManager(),
                 new NoOpQueryManager(),
                 new SimpleTtlNodeSelectorConfig());
-        SplitSource splitSource = new ConnectorAwareSplitSource(CONNECTOR_ID, TestingTransactionHandle.create(), connectorSplitSource);
+        SplitSource splitSource = new ConnectorAwareSplitSource(CONNECTOR_ID, TestingTransactionHandle.create(), new TableHandle(CONNECTOR_ID, new TestingTableHandle(), TestingTransactionHandle.create(), Optional.empty()), connectorSplitSource);
         SplitPlacementPolicy placementPolicy = new DynamicSplitPlacementPolicy(nodeScheduler.createNodeSelector(TestingSession.testSessionBuilder().build(), splitSource.getConnectorId()), stage::getAllTasks);
         return newSourcePartitionedSchedulerAsStageScheduler(stage, TABLE_SCAN_NODE_ID, splitSource, placementPolicy, splitBatchSize);
     }

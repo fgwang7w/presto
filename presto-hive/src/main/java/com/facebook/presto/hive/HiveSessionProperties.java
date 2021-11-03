@@ -573,7 +573,7 @@ public final class HiveSessionProperties
                         OVERWRITE_HIGH_BANDWIDTH_STORAGE_FOR_REPLICATED_READS,
                         "high bandwidth for multiple connections to retrieve data from storage is required for replicated-reads strategy",
                         hiveClientConfig.isOverwriteHighBandwidthStorageForReplicatedReads(),
-                        true),
+                        false),
                 stringProperty(
                         NEW_PARTITION_USER_SUPPLIED_PARAMETER,
                         "\"user_supplied\" parameter added to all newly created partitions",

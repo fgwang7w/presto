@@ -153,9 +153,13 @@ public class SplitSourceFactory
             else {
                 table = node.getTable();
             }
+            boolean isReplicatedReadsCloudTable = table.getCanReplicatedForColocatedBroadcastJoin().isPresent() && table.getCanReplicatedForColocatedBroadcastJoin().get();
+            // left side of join cannot be replicated to prevent transmitting redundant splits of probe table.
+            // This is because Presto only allows broadcast data from builder side of the join.
+            TableHandle tableHandle = table.setReplicatedReadsCloudTableHandle(table.getIsCloudTable(), Optional.of(isReplicatedReadsCloudTable && context.getCanReplicatedForColocatedJoin()));
             Supplier<SplitSource> splitSourceSupplier = () -> splitSourceProvider.getSplits(
                     session,
-                    table,
+                    tableHandle,
                     getSplitSchedulingStrategy(stageExecutionDescriptor, node.getId()),
                     warningCollector);
 
@@ -170,6 +174,7 @@ public class SplitSourceFactory
         public Map<PlanNodeId, SplitSource> visitJoin(JoinNode node, Context context)
         {
             Map<PlanNodeId, SplitSource> leftSplits = node.getLeft().accept(this, context);
+            context.setCanReplicatedForColocatedJoin(true);
             Map<PlanNodeId, SplitSource> rightSplits = node.getRight().accept(this, context);
             return ImmutableMap.<PlanNodeId, SplitSource>builder()
                     .putAll(leftSplits)
@@ -417,6 +422,7 @@ public class SplitSourceFactory
     private static class Context
     {
         private final TableWriteInfo tableWriteInfo;
+        private boolean canReplicatedforColocatedJoin;
 
         public Context(TableWriteInfo tableWriteInfo)
         {
@@ -426,6 +432,16 @@ public class SplitSourceFactory
         public TableWriteInfo getTableWriteInfo()
         {
             return tableWriteInfo;
+        }
+
+        public boolean getCanReplicatedForColocatedJoin()
+        {
+            return canReplicatedforColocatedJoin;
+        }
+
+        public void setCanReplicatedForColocatedJoin(boolean canReplicatedforColocatedJoin)
+        {
+            this.canReplicatedforColocatedJoin = canReplicatedforColocatedJoin;
         }
     }
 }

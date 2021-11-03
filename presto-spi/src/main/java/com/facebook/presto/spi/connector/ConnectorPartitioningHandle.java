@@ -25,7 +25,7 @@ public interface ConnectorPartitioningHandle
         return false;
     }
 
-    default boolean isCloudTable()
+    default boolean isReplicatedReadsTable()
     {
         return false;
     }

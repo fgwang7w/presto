@@ -2985,12 +2985,12 @@ public class HiveMetadata
                 // we can allow DIM table partitioned over fact
                 // All DIM table includes HiveTypes for all columns so we can tolerate the inconsistency for compatibility
                 // TODO: need to validate when join key is over a CAST
-                if ((leftHandle.getIsCloudTable().isPresent() || rightHandle.getIsCloudTable().isPresent()) && !leftHandle.getHiveTypes().equals(rightHandle.getHiveTypes())) {
-                    if (leftHandle.isCloudTable() && !leftHandle.getHiveTypes().get().contains(rightHandle.getHiveTypes().get())) {
+                if ((leftHandle.isReplicatedReadsTable() || rightHandle.isReplicatedReadsTable()) && !leftHandle.getHiveTypes().equals(rightHandle.getHiveTypes())) {
+                    if (leftHandle.isReplicatedReadsTable() && !leftHandle.getHiveTypes().get().contains(rightHandle.getHiveTypes().get())) {
                         // right side must has a matching type to any of the left, or something goes wrong...
                         return false;
                     }
-                    if (rightHandle.isCloudTable() && !rightHandle.getHiveTypes().get().contains(leftHandle.getHiveTypes().get())) {
+                    if (rightHandle.isReplicatedReadsTable() && !rightHandle.getHiveTypes().get().contains(leftHandle.getHiveTypes().get())) {
                         // left side must has a matching type to any of the right, or something goes wrong...
                         return false;
                     }

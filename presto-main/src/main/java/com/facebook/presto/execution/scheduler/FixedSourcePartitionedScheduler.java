@@ -101,8 +101,6 @@ public class FixedSourcePartitionedScheduler
 
         checkArgument(splitSources.keySet().equals(ImmutableSet.copyOf(schedulingOrder)));
 
-        BucketedSplitPlacementPolicy splitPlacementPolicy = new BucketedSplitPlacementPolicy(nodeSelector, nodes, bucketNodeMap, stage::getAllTasks);
-
         ArrayList<SourceScheduler> sourceSchedulers = new ArrayList<>();
         checkArgument(
                 partitionHandles.equals(ImmutableList.of(NOT_PARTITIONED)) != stageExecutionDescriptor.isStageGroupedExecution(),
@@ -118,9 +116,23 @@ public class FixedSourcePartitionedScheduler
 
         boolean firstPlanNode = true;
         Optional<LifespanScheduler> groupedLifespanScheduler = Optional.empty();
+        SplitPlacementPolicy splitPlacementPolicy;
+        boolean colocatedJoinStage = false;
         for (PlanNodeId planNodeId : schedulingOrder) {
             SplitSource splitSource = splitSources.get(planNodeId);
             boolean groupedExecutionForScanNode = stageExecutionDescriptor.isScanGroupedExecution(planNodeId);
+            if (splitSource.isReplicatedReadsSource()) {
+                splitPlacementPolicy = new ReplicatedReadsSplitPlacementPolicy(nodeSelector, nodes, bucketNodeMap, stage::getAllTasks);
+                colocatedJoinStage = true;
+            }
+            else {
+                if (colocatedJoinStage) {
+                    splitPlacementPolicy = new DynamicSplitPlacementPolicy(nodeSelector, stage::getAllTasks);
+                }
+                else {
+                    splitPlacementPolicy = new BucketedSplitPlacementPolicy(nodeSelector, nodes, bucketNodeMap, stage::getAllTasks);
+                }
+            }
             SourceScheduler sourceScheduler = newSourcePartitionedSchedulerAsSourceScheduler(
                     stage,
                     planNodeId,

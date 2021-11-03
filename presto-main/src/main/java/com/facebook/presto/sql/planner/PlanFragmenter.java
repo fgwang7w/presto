@@ -968,7 +968,7 @@ public class PlanFragmenter
             }
 
             // replicated cloud table already single
-            if (partitioningHandle.isPresent() && (partitioningHandle.get().getConnectorHandle().isCloudTable())) {
+            if (partitioningHandle.isPresent() && (partitioningHandle.get().getConnectorHandle().isReplicatedReadsTable())) {
                 return this;
             }
 

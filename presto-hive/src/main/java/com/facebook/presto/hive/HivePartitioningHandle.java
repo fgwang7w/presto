@@ -37,7 +37,7 @@ public class HivePartitioningHandle
     private final BucketFunctionType bucketFunctionType;
     private final Optional<List<HiveType>> hiveTypes;
     private final Optional<List<Type>> types;
-    private final Optional<Boolean> isCloudTable;
+    private final Optional<Boolean> isReplicatedReadsTable;
 
     public static HivePartitioningHandle createHiveCompatiblePartitioningHandle(
             int bucketCount,
@@ -56,7 +56,7 @@ public class HivePartitioningHandle
             int bucketCount,
             List<HiveType> hiveTypes,
             OptionalInt maxCompatibleBucketCount,
-            Optional<Boolean> isCloudTable)
+            Optional<Boolean> isReplicatedReadsTable)
     {
         return new HivePartitioningHandle(
                 bucketCount,
@@ -64,7 +64,7 @@ public class HivePartitioningHandle
                 HIVE_COMPATIBLE,
                 Optional.of(hiveTypes),
                 Optional.empty(),
-                isCloudTable);
+                isReplicatedReadsTable);
     }
 
     public static HivePartitioningHandle createPrestoNativePartitioningHandle(
@@ -97,11 +97,11 @@ public class HivePartitioningHandle
             @JsonProperty("bucketFunctionType") BucketFunctionType bucketFunctionType,
             @JsonProperty("hiveTypes") Optional<List<HiveType>> hiveTypes,
             @JsonProperty("types") Optional<List<Type>> types,
-            @JsonProperty("isDimTable") Optional<Boolean> isCloudTable)
+            @JsonProperty("isDimTable") Optional<Boolean> isReplicatedReadsTable)
     {
         this.bucketCount = bucketCount;
         this.maxCompatibleBucketCount = maxCompatibleBucketCount;
-        this.isCloudTable = isCloudTable;
+        this.isReplicatedReadsTable = isReplicatedReadsTable;
         this.bucketFunctionType = requireNonNull(bucketFunctionType, "bucketFunctionType is null");
         this.hiveTypes = requireNonNull(hiveTypes, "hiveTypes is null");
         this.types = requireNonNull(types, "types is null");
@@ -143,15 +143,15 @@ public class HivePartitioningHandle
     }
 
     @JsonProperty
-    public Optional<Boolean> getIsCloudTable()
+    public Optional<Boolean> getIsReplicatedReadsTable()
     {
-        return isCloudTable;
+        return isReplicatedReadsTable;
     }
 
     @Override
-    public boolean isCloudTable()
+    public boolean isReplicatedReadsTable()
     {
-        return isCloudTable.isPresent() && isCloudTable.get();
+        return isReplicatedReadsTable.isPresent() && isReplicatedReadsTable.get();
     }
 
     @Override
@@ -162,7 +162,7 @@ public class HivePartitioningHandle
                 bucketCount,
                 bucketFunctionType,
                 bucketFunctionType.equals(HIVE_COMPATIBLE) ? hiveTypes.get() : types.get(),
-                isCloudTable.isPresent() && isCloudTable.get());
+                isReplicatedReadsTable.isPresent() && isReplicatedReadsTable.get());
     }
 
     @Override
@@ -184,6 +184,6 @@ public class HivePartitioningHandle
     @Override
     public int hashCode()
     {
-        return Objects.hash(bucketCount, bucketFunctionType, hiveTypes, types, isCloudTable);
+        return Objects.hash(bucketCount, bucketFunctionType, hiveTypes, types, isReplicatedReadsTable);
     }
 }

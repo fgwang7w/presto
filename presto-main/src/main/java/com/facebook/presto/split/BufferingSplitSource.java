@@ -67,6 +67,12 @@ public class BufferingSplitSource
     }
 
     @Override
+    public boolean isReplicatedReadsSource()
+    {
+        return source.isReplicatedReadsSource();
+    }
+
+    @Override
     public void close()
     {
         source.close();
