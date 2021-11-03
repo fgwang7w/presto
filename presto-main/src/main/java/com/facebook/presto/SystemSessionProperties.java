@@ -117,6 +117,7 @@ public final class SystemSessionProperties
     public static final String SPATIAL_JOIN = "spatial_join";
     public static final String SPATIAL_PARTITIONING_TABLE_NAME = "spatial_partitioning_table_name";
     public static final String COLOCATED_JOIN = "colocated_join";
+    public static final String ENABLE_COLOCATED_JOIN_FOR_DIM_REPLICATE_TABLE = "enable_colocated_join_for_dim_replicate_table";
     public static final String CONCURRENT_LIFESPANS_PER_NODE = "concurrent_lifespans_per_task";
     public static final String REORDER_JOINS = "reorder_joins";
     public static final String JOIN_REORDERING_STRATEGY = "join_reordering_strategy";
@@ -331,6 +332,11 @@ public final class SystemSessionProperties
                         SIZE_BASED_JOIN_DISTRIBUTION_TYPE,
                         "Consider source table size when determining join distribution type when CBO fails",
                         featuresConfig.isSizeBasedJoinDistributionTypeEnabled(),
+                        false),
+                booleanProperty(
+                        ENABLE_COLOCATED_JOIN_FOR_DIM_REPLICATE_TABLE,
+                        "Eanble co-located broadcast join using replicated reads",
+                        featuresConfig.getEnableColocatedJoinForDimReplicateTable(),
                         false),
                 booleanProperty(
                         DISTRIBUTED_INDEX_JOIN,
@@ -1500,6 +1506,11 @@ public final class SystemSessionProperties
     public static boolean isSizeBasedJoinDistributionTypeEnabled(Session session)
     {
         return session.getSystemProperty(SIZE_BASED_JOIN_DISTRIBUTION_TYPE, Boolean.class);
+    }
+
+    public static Boolean getEnableColocatedJoinForDimReplicateTable(Session session)
+    {
+        return session.getSystemProperty(ENABLE_COLOCATED_JOIN_FOR_DIM_REPLICATE_TABLE, Boolean.class);
     }
 
     public static boolean isDistributedIndexJoinEnabled(Session session)

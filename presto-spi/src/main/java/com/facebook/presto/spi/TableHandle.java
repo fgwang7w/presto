@@ -53,12 +53,22 @@ public final class TableHandle
             ConnectorTableHandle connectorHandle,
             ConnectorTransactionHandle transaction,
             Optional<ConnectorTableLayoutHandle> layout,
+            boolean canReplicatedReadsForCloudTable)
+    {
+        this(connectorId, connectorHandle, transaction, layout, Optional.empty(), canReplicatedReadsForCloudTable);
+    }
+
+    public TableHandle(
+            ConnectorId connectorId,
+            ConnectorTableHandle connectorHandle,
+            ConnectorTransactionHandle transaction,
+            Optional<ConnectorTableLayoutHandle> layout,
             Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter)
     {
         this(connectorId, connectorHandle, transaction, layout, dynamicFilter, false);
     }
 
-    private TableHandle(
+    public TableHandle(
             ConnectorId connectorId,
             ConnectorTableHandle connectorHandle,
             ConnectorTransactionHandle transaction,
@@ -110,11 +120,6 @@ public final class TableHandle
             throw new RuntimeException("dynamicFilter already exists");
         }
         return new TableHandle(connectorId, connectorHandle, transaction, layout, Optional.of(dynamicFilter));
-    }
-
-    public TableHandle setCanReplicatedReadsForCloudTable(boolean canReplicatedReadsForCloudTable)
-    {
-        return new TableHandle(connectorId, connectorHandle, transaction, layout, dynamicFilter, canReplicatedReadsForCloudTable);
     }
 
     public boolean getCanReplicatedReadsForCloudTable()

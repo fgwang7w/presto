@@ -536,6 +536,13 @@ public class FeaturesConfig
         return enableColocatedJoinForDimReplicateTable;
     }
 
+    @Config("enable_colocated_join_for_dim_replicate_table")
+    public FeaturesConfig setEnableColocatedJoinForDimReplicateTable(boolean enableColocatedJoinForDimReplicateTable)
+    {
+        this.enableColocatedJoinForDimReplicateTable = enableColocatedJoinForDimReplicateTable;
+        return this;
+    }
+
     public boolean isGroupedExecutionEnabled()
     {
         return groupedExecutionEnabled;

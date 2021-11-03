@@ -427,8 +427,7 @@ public class MetadataManager
         ConnectorMetadata metadata = catalogMetadata.getMetadataFor(connectorId);
         ConnectorTableLayoutHandle newTableLayoutHandle = metadata.getAlternativeLayoutHandle(session.toConnectorSession(connectorId), tableHandle.getLayout().get(), partitioningHandle.getConnectorHandle(), isCloudTableReplicated);
         boolean canReplicatedReadsCloudTable = tableHandle.getCanReplicatedReadsForCloudTable();
-        return new TableHandle(tableHandle.getConnectorId(), tableHandle.getConnectorHandle(), tableHandle.getTransaction(), Optional.of(newTableLayoutHandle))
-                .setCanReplicatedReadsForCloudTable(canReplicatedReadsCloudTable);
+        return new TableHandle(tableHandle.getConnectorId(), tableHandle.getConnectorHandle(), tableHandle.getTransaction(), Optional.of(newTableLayoutHandle), canReplicatedReadsCloudTable);
     }
 
     @Override

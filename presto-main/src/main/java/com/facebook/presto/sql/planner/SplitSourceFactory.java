@@ -157,7 +157,7 @@ public class SplitSourceFactory
             boolean isReplicatedReadsCloudTable = table.getCanReplicatedReadsForCloudTable();
             // left side of join cannot be replicated to prevent transmitting redundant splits of probe table.
             // This is because Presto only allows broadcast data from builder side of the join.
-            TableHandle tableHandle = table.setCanReplicatedReadsForCloudTable(table.getCanReplicatedReadsForCloudTable() && context.getCanReplicatedForColocatedJoin());
+            TableHandle tableHandle = new TableHandle(table.getConnectorId(), table.getConnectorHandle(), table.getTransaction(), table.getLayout(), table.getDynamicFilter(), table.getCanReplicatedReadsForCloudTable() && context.getCanReplicatedForColocatedJoin());
             Supplier<SplitSource> splitSourceSupplier = () -> splitSourceProvider.getSplits(
                     session,
                     tableHandle,

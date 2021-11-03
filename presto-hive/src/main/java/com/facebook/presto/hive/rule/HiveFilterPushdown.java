@@ -401,7 +401,7 @@ public class HiveFilterPushdown
             TableScanNode node = new TableScanNode(
                     tableScan.getSourceLocation(),
                     tableScan.getId(),
-                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle())).setCanReplicatedReadsForCloudTable(layout.getIsReplicatedReadsCloudTable()),
+                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle()), layout.getIsReplicatedReadsCloudTable()),
                     tableScan.getOutputVariables(),
                     tableScan.getAssignments(),
                     tableScan.getTableConstraints(),
@@ -438,7 +438,7 @@ public class HiveFilterPushdown
             TableScanNode node = new TableScanNode(
                     tableScan.getSourceLocation(),
                     tableScan.getId(),
-                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle())).setCanReplicatedReadsForCloudTable(pushdownFilterResult.getLayout().getIsReplicatedReadsCloudTable()),
+                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle()), pushdownFilterResult.getLayout().getIsReplicatedReadsCloudTable()),
                     tableScan.getOutputVariables(),
                     tableScan.getAssignments(),
                     tableScan.getTableConstraints(),
