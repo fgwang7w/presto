@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql.planner.optimizations;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.Session;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.connector.system.GlobalSystemConnector;
@@ -86,7 +87,6 @@ import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.ListMultimap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.SetMultimap;
-import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -143,8 +143,6 @@ import static com.facebook.presto.sql.planner.plan.ExchangeNode.mergingExchange;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.partitionedExchange;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.replicatedExchange;
 import static com.facebook.presto.sql.planner.plan.ExchangeNode.roundRobinExchange;
-import static com.facebook.presto.sql.planner.plan.JoinNode.Type.FULL;
-import static com.facebook.presto.sql.planner.plan.JoinNode.Type.RIGHT;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Verify.verify;
@@ -160,6 +158,8 @@ public class AddExchanges
     private final SqlParser parser;
     private final Metadata metadata;
     private final PartitioningProviderManager partitioningProviderManager;
+
+    private static final Logger logger = Logger.get(AddExchanges.class);
 
     public AddExchanges(Metadata metadata, SqlParser parser, PartitioningProviderManager partitioningProviderManager)
     {
@@ -778,7 +778,10 @@ public class AddExchanges
                  * 1. Handle broadcast join using replicated-reads execution strategy for cloud dimension tables
                  * 2. Handle general case when no cloud tables are involved
                  */
-                if (getEnableColocatedJoinForDimReplicateTable(session) && (canReplicatedRead(node.getBuild()) || canReplicatedRead(node.getProbe()))) {
+                boolean canLeftReplicate = canReplicatedRead(node.getProbe());
+                boolean canRightReplicate = canReplicatedRead(node.getBuild());
+                logger.info("\ncanLeftReplicate=" + canLeftReplicate + "canRightReplicate=" + canRightReplicate);
+                if (getEnableColocatedJoinForDimReplicateTable(session) && (canLeftReplicate || canRightReplicate) && node.getType() == JoinNode.Type.INNER) {
                     return planReplicatedReadsJoin(node);
                 }
                 PlanWithProperties left = node.getLeft().accept(this, PreferredProperties.any());
@@ -798,217 +801,44 @@ public class AddExchanges
 
         private PlanWithProperties planReplicatedReadsJoin(JoinNode joinNode)
         {
-            JoinNode.DistributionType distributionType = joinNode.getDistributionType().get();
-
-            JoinNode.Type joinNodeType = joinNode.getType();
             List<VariableReferenceExpression> leftVariables = Lists.transform(joinNode.getCriteria(), JoinNode.EquiJoinClause::getLeft);
             List<VariableReferenceExpression> rightVariables = Lists.transform(joinNode.getCriteria(), JoinNode.EquiJoinClause::getRight);
-            SetMultimap<VariableReferenceExpression, VariableReferenceExpression> rightToLeft = createMapping(rightVariables, leftVariables);
-            SetMultimap<VariableReferenceExpression, VariableReferenceExpression> leftToRight = createMapping(leftVariables, rightVariables);
 
             PlanWithProperties probe = joinNode.getLeft().accept(this, PreferredProperties.partitioned(ImmutableSet.copyOf(leftVariables)));
             PlanWithProperties build = joinNode.getRight().accept(this, PreferredProperties.partitioned(ImmutableSet.copyOf(rightVariables)));
 
-            if (joinNodeType == JoinNode.Type.INNER) {
-                /**
-                 * for INNER join, co-located join is allowed if this is not a cross-join;
-                 * cross join requires to broadcast the small side unless the build side is already a replicated table
-                 */
-                if (!joinNode.isCrossJoin() ||
-                        (joinNode.isCrossJoin() && canReplicatedRead(joinNode.getBuild()))) {
-                    distributionType = JoinNode.DistributionType.REPLICATED;
+            /**
+             * for INNER join, co-located join is allowed if this is not a cross-join;
+             * cross join requires to broadcast the small side unless the build side is already a replicated table
+             */
+            if (!joinNode.isCrossJoin()) {
+                JoinNode.DistributionType distributionType = JoinNode.DistributionType.REPLICATED;
 
-                    // if any side of join is a single/gather node, we need to repartition it so it can join with the other replicated side
-                    if ((probe.getProperties().isSingleNode() && !canReplicatedRead(joinNode.getProbe()) && !build.getProperties().isSingleNode())) {
-                        probe = withDerivedProperties(
-                                partitionedExchange(
-                                        idAllocator.getNextId(),
-                                        selectExchangeScopeForPartitionedRemoteExchange(probe.getNode(), false),
-                                        probe.getNode(),
-                                        new PartitioningScheme(
-                                                Partitioning.create(FIXED_HASH_DISTRIBUTION, probe.getNode().getOutputVariables()),
-                                                probe.getNode().getOutputVariables())),
-                                probe.getProperties());
-                    }
-                    if ((build.getProperties().isSingleNode() && !canReplicatedRead(joinNode.getBuild()) && !probe.getProperties().isSingleNode())) {
-                        build = withDerivedProperties(
-                                replicatedExchange(
-                                        idAllocator.getNextId(),
-                                        REMOTE_STREAMING,
-                                        build.getNode()),
-                                build.getProperties());
-                    }
-                    return buildJoin(joinNode, probe, build, distributionType);
+                // if any side of join is a single/gather node, we need to repartition it so it can join with the other replicated side
+                if ((probe.getProperties().isSingleNode() && !canReplicatedRead(joinNode.getProbe()) && !build.getProperties().isSingleNode())) {
+                    probe = withDerivedProperties(
+                            partitionedExchange(
+                                    idAllocator.getNextId(),
+                                    selectExchangeScopeForPartitionedRemoteExchange(probe.getNode(), false),
+                                    probe.getNode(),
+                                    new PartitioningScheme(
+                                            Partitioning.create(FIXED_HASH_DISTRIBUTION, probe.getNode().getOutputVariables()),
+                                            probe.getNode().getOutputVariables())),
+                            probe.getProperties());
                 }
-                else {
-                    return planReplicatedJoin(joinNode, probe);
+                if ((build.getProperties().isSingleNode() && !canReplicatedRead(joinNode.getBuild()) && !probe.getProperties().isSingleNode())) {
+                    build = withDerivedProperties(
+                            replicatedExchange(
+                                    idAllocator.getNextId(),
+                                    REMOTE_STREAMING,
+                                    build.getNode()),
+                            build.getProperties());
                 }
+                return buildJoin(joinNode, probe, build, distributionType);
             }
-            else if (joinNodeType == JoinNode.Type.LEFT) {
-                /**
-                 * for LEFT join, co-located join is allowed only if both sides are replicated/cloud dim tables;
-                 * otherwise, we must use repartition on the dim table to ensure correct result
-                 */
-                if (!canReplicatedRead(joinNode.getProbe()) || canReplicatedRead(joinNode.getProbe()) && canReplicatedRead(joinNode.getBuild())) {
-                    distributionType = JoinNode.DistributionType.REPLICATED;
-                    if (probe.getProperties().isSingleNode()) {
-                        probe = withDerivedProperties(
-                                partitionedExchange(
-                                        idAllocator.getNextId(),
-                                        selectExchangeScopeForPartitionedRemoteExchange(probe.getNode(), false),
-                                        probe.getNode(),
-                                        new PartitioningScheme(
-                                                Partitioning.create(FIXED_HASH_DISTRIBUTION, build.getNode().getOutputVariables()),
-                                                probe.getNode().getOutputVariables())),
-                                probe.getProperties());
-                    }
-                }
-                // left is replicated table, right is partitioned table, then we need to repartition left and repartition right if needed
-                else {
-                    distributionType = JoinNode.DistributionType.PARTITIONED;
-                    if (isNodePartitionedOn(build.getProperties(), build.getNode().getOutputVariables()) && !(build.getProperties().isSingleNode())) {
-                        Partitioning probePartitioning = build.getProperties().translateVariable(createTranslator(rightToLeft)).getNodePartitioning().get();
-                        probe = withDerivedProperties(
-                                partitionedExchange(
-                                        idAllocator.getNextId(),
-                                        REMOTE_STREAMING,
-                                        probe.getNode(),
-                                        new PartitioningScheme(
-                                                probePartitioning,
-                                                probe.getNode().getOutputVariables())),
-                                probe.getProperties());
-                    }
-                    // otherwise repartition both sides
-                    else {
-                        Pair<PlanWithProperties, PlanWithProperties> repartition = repartitionBothSides(probe, build);
-                        probe = repartition.getLeft();
-                        build = repartition.getRight();
-                    }
-                }
+            else {
+                return planReplicatedJoin(joinNode, probe);
             }
-            else if (joinNodeType == RIGHT) {
-                /**
-                 * for RIGHT join, co-located join is allowed only if both sides are replicated/cloud dim tables;
-                 * otherwise, we must repartition one side of join leg, or repartition both sides
-                 */
-                if (!canReplicatedRead(joinNode.getBuild()) ||
-                        (canReplicatedRead(joinNode.getProbe()) && canReplicatedRead(joinNode.getBuild()))) {
-                    distributionType = JoinNode.DistributionType.REPLICATED;
-                    if (build.getProperties().isSingleNode()) {
-                        build = withDerivedProperties(
-                                partitionedExchange(
-                                        idAllocator.getNextId(),
-                                        REMOTE_STREAMING,
-                                        build.getNode(),
-                                        new PartitioningScheme(
-                                                Partitioning.create(FIXED_HASH_DISTRIBUTION, build.getNode().getOutputVariables()),
-                                                build.getNode().getOutputVariables())),
-                                build.getProperties());
-                    }
-                }
-                // if right is replicated table, then we have to repartition right and repartition left side if needed
-                else {
-                    distributionType = JoinNode.DistributionType.PARTITIONED;
-                    // if left is partitioend on join key and not a single/gather node, then repartition right only
-                    // we don't want to check if left and right have same partition handler because right doesn't have partitioning handler at all
-                    if (isNodePartitionedOn(build.getProperties(), leftVariables) && !(probe.getProperties().isSingleNode())) {
-                        Partitioning buildPartitioning = probe.getProperties().translateVariable(createTranslator(leftToRight)).getNodePartitioning().get();
-                        build = withDerivedProperties(
-                                partitionedExchange(
-                                        idAllocator.getNextId(),
-                                        REMOTE_STREAMING,
-                                        build.getNode(),
-                                        new PartitioningScheme(
-                                                buildPartitioning,
-                                                build.getNode().getOutputVariables())),
-                                build.getProperties());
-                    }
-                    // otherwise repartition both sides
-                    else {
-                        Pair<PlanWithProperties, PlanWithProperties> repartition = repartitionBothSides(probe, build);
-                        probe = repartition.getLeft();
-                        build = repartition.getRight();
-                    }
-                }
-            }
-            else if (joinNodeType == FULL) {
-                /**
-                 * for FULL join, co-located join is allowed only if both sides are replicated/cloud dim tables;
-                 * otherwise, we must repartition the replicated tables
-                 */
-                if (canReplicatedRead(joinNode.getProbe()) && canReplicatedRead(joinNode.getBuild())) {
-                    distributionType = JoinNode.DistributionType.REPLICATED;
-                }
-                else if (!canReplicatedRead(joinNode.getProbe())) {
-                    distributionType = JoinNode.DistributionType.PARTITIONED;
-                    if (isNodePartitionedOn(probe.getProperties(), leftVariables) && !(probe.getProperties().isSingleNode())) {
-                        Partitioning buildPartitioning = probe.getProperties().translateVariable(createTranslator(leftToRight)).getNodePartitioning().get();
-                        build = withDerivedProperties(
-                                partitionedExchange(
-                                        idAllocator.getNextId(),
-                                        REMOTE_STREAMING,
-                                        build.getNode(),
-                                        new PartitioningScheme(
-                                                buildPartitioning,
-                                                build.getNode().getOutputVariables())),
-                                build.getProperties());
-                    }
-                    // otherwise repartition both sides
-                    else {
-                        Pair<PlanWithProperties, PlanWithProperties> repartition = repartitionBothSides(probe, build);
-                        probe = repartition.getLeft();
-                        build = repartition.getRight();
-                    }
-                }
-                else if (!canReplicatedRead(joinNode.getBuild())) {
-                    distributionType = JoinNode.DistributionType.PARTITIONED;
-                    // if right is partitioned on right join key and not a single/gather node, then repartition left only
-                    // we don't need to compare left/right partitioning handler because left doesn't have partitioning handler
-                    if (isNodePartitionedOn(build.getProperties(), rightVariables) && !(build.getProperties().isSingleNode())) {
-                        Partitioning probePartitioning = build.getProperties().translateVariable(createTranslator(rightToLeft)).getNodePartitioning().get();
-                        build = withDerivedProperties(
-                                partitionedExchange(
-                                        idAllocator.getNextId(),
-                                        REMOTE_STREAMING,
-                                        probe.getNode(),
-                                        new PartitioningScheme(
-                                                probePartitioning,
-                                                probe.getNode().getOutputVariables())),
-                                probe.getProperties());
-                    }
-                    // otherwise repartition both sides
-                    else {
-                        Pair<PlanWithProperties, PlanWithProperties> repartition = repartitionBothSides(probe, build);
-                        probe = repartition.getLeft();
-                        build = repartition.getRight();
-                    }
-                }
-            }
-
-            return buildJoin(joinNode, probe, build, distributionType);
-        }
-
-        private Pair<PlanWithProperties, PlanWithProperties> repartitionBothSides(PlanWithProperties probe, PlanWithProperties build)
-        {
-            PlanWithProperties left = withDerivedProperties(
-                    partitionedExchange(
-                            idAllocator.getNextId(),
-                            selectExchangeScopeForPartitionedRemoteExchange(probe.getNode(), false),
-                            probe.getNode(),
-                            new PartitioningScheme(
-                                    Partitioning.create(FIXED_HASH_DISTRIBUTION, build.getNode().getOutputVariables()),
-                                    probe.getNode().getOutputVariables())),
-                    probe.getProperties());
-            PlanWithProperties right = withDerivedProperties(
-                    partitionedExchange(
-                            idAllocator.getNextId(),
-                            selectExchangeScopeForPartitionedRemoteExchange(build.getNode(), false),
-                            build.getNode(),
-                            new PartitioningScheme(
-                                    Partitioning.create(FIXED_HASH_DISTRIBUTION, build.getNode().getOutputVariables()),
-                                    build.getNode().getOutputVariables())),
-                    build.getProperties());
-            return Pair.of(left, right);
         }
 
         public boolean canReplicatedRead(PlanNode node)

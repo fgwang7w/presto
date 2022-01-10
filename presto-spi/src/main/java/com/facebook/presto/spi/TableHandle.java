@@ -67,7 +67,7 @@ public final class TableHandle
             Optional<Supplier<TupleDomain<ColumnHandle>>> dynamicFilter,
             Optional<Boolean> isCloudTable)
     {
-        this(connectorId, connectorHandle, transaction, layout, dynamicFilter, Optional.empty(), Optional.empty());
+        this(connectorId, connectorHandle, transaction, layout, dynamicFilter, isCloudTable, Optional.empty());
     }
 
     private TableHandle(

@@ -142,12 +142,6 @@ public class HivePartitioningHandle
         return bucketFunctionType;
     }
 
-    @JsonProperty
-    public Optional<Boolean> getIsReplicatedReadsTable()
-    {
-        return isReplicatedReadsTable;
-    }
-
     @Override
     public boolean isReplicatedReadsTable()
     {

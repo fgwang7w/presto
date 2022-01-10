@@ -116,13 +116,14 @@ public interface ConnectorMetadata
             Constraint<ColumnHandle> constraint,
             Optional<Set<ColumnHandle>> desiredColumns);
 
-    default ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle)
-    {
-        return getTableLayout(session, handle, false);
-    }
+    ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle);
+
     default ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle, boolean isDimTableReplicated)
     {
-        return new ConnectorTableLayout(handle);
+        if (isDimTableReplicated) {
+            return getTableLayout(session, handle, true);
+        }
+        return getTableLayout(session, handle);
     }
 
     /**

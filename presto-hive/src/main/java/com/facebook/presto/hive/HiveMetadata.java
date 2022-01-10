@@ -2766,6 +2766,12 @@ public class HiveMetadata
     }
 
     @Override
+    public ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle)
+    {
+        return getTableLayout(session, handle, false);
+    }
+
+    @Override
     public ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle layoutHandle, boolean isDimTableReplicated)
     {
         HiveTableLayoutHandle hiveLayoutHandle = (HiveTableLayoutHandle) layoutHandle;
@@ -2915,11 +2921,17 @@ public class HiveMetadata
     protected boolean canReplicatedReads(SchemaTableName tableName, HiveTableLayoutHandle hiveLayoutHandle, ConnectorSession session)
     {
         String tablePath = hiveLayoutHandle.getTablePath();
-        HdfsContext context = new HdfsContext(session, tableName.getSchemaName(), tableName.getTableName(), tablePath, false);
+        // temporary teble may not have physical location
+        if (tablePath.isEmpty()) {
+            return false;
+        }
 
+        HdfsContext context = new HdfsContext(session, tableName.getSchemaName(), tableName.getTableName(), tablePath, false);
         // only when property enforces to require high bandwidth storage and it is on S3 file system, replicated-read is allowed
         if (isS3FileSystem(context, hdfsEnvironment, new Path(tablePath)) || getOverwriteHighBandwidthStorageForReplicatedReads(session)) {
-            return true;
+            if (getOverwriteHighBandwidthStorageForReplicatedReads(session)) {
+                return true;
+            }
         }
         return false;
     }
@@ -3037,13 +3049,10 @@ public class HiveMetadata
         SchemaTableName schemaTableName = hiveLayoutHandle.getSchemaTableName();
         boolean canUseReplicatedReads = canReplicatedReads(schemaTableName, hiveLayoutHandle, session);
 
-        HivePartitioningHandle hivePartitioningHandle;
+        HivePartitioningHandle hivePartitioningHandle = (HivePartitioningHandle) partitioningHandle;
         boolean createVirtualBucketHandleForDim = false;
 
-        if (partitioningHandle instanceof HivePartitionHandle) {
-            hivePartitioningHandle = (HivePartitioningHandle) partitioningHandle;
-        }
-        else {
+        if (isDimTableReplicatedRequest) {
             // Special handling for DIM replicated table which may have been bound with a hive partitioning handle by PlanFragmenter.ReassignPartitioningHandle
             Table table = metastore.getTable(getMetastoreContext(session), schemaTableName.getSchemaName(), schemaTableName.getTableName())
                     .orElseThrow(() -> new TableNotFoundException(schemaTableName));

@@ -162,7 +162,7 @@ public class HiveClientConfig
     private boolean collectColumnStatisticsOnWrite;
     private boolean partitionStatisticsBasedOptimizationEnabled;
 
-    private boolean overwriteHighBandwidthStorageForReplicatedReads;
+    private boolean overwriteHighBandwidthStorageForReplicatedReads = true;
 
     private boolean s3SelectPushdownEnabled;
     private int s3SelectPushdownMaxConnections = 500;

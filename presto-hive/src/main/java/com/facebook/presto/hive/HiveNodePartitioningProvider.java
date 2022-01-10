@@ -72,14 +72,14 @@ public class HiveNodePartitioningProvider
         NodeSelectionStrategy nodeSelectionStrategy = getNodeSelectionStrategy(session);
         int bucketCount = handle.getBucketCount();
         if (handle.isReplicatedReadsTable()) {
-            // for cloud table with replicated reads, we will apply soft affinity to available nodes for replicate reads across all workers
+            // for cloud table with replicated reads, we will apply node affinity policy to available nodes for replicate reads across all workers
             nodeSelectionStrategy = SOFT_AFFINITY;
             bucketCount = sortedNodes.size();
         }
         switch (nodeSelectionStrategy) {
             case HARD_AFFINITY:
             case SOFT_AFFINITY:
-                return createBucketNodeMap(Stream.generate(() -> sortedNodes).flatMap(List::stream).limit(bucketCount).collect(toImmutableList()), nodeSelectionStrategy);
+                return createBucketNodeMap(Stream.generate(() -> sortedNodes).flatMap(List::stream).limit(bucketCount).collect(toImmutableList()), nodeSelectionStrategy, handle.isReplicatedReadsTable());
             case NO_PREFERENCE:
                 return createBucketNodeMap(bucketCount);
             default:

@@ -425,10 +425,13 @@ public class MetadataManager
         }
         CatalogMetadata catalogMetadata = getCatalogMetadata(session, connectorId);
         ConnectorMetadata metadata = catalogMetadata.getMetadataFor(connectorId);
+        log.info("\nisCloudTableReplicated=" + isCloudTableReplicated);
         ConnectorTableLayoutHandle newTableLayoutHandle = metadata.getAlternativeLayoutHandle(session.toConnectorSession(connectorId), tableHandle.getLayout().get(), partitioningHandle.getConnectorHandle(), isCloudTableReplicated);
-        boolean canReplicatedReadsCloudTable = tableHandle.getIsCloudTable().get().booleanValue() && isCloudTableReplicated;
+        boolean canReplicatedReadsCloudTable = tableHandle.getIsCloudTable().orElse(false) && isCloudTableReplicated;
+        log.info("\ncanReplicatedReadsCloudTable=" + canReplicatedReadsCloudTable);
+        log.info("\ntableHandle.getIsCloudTable=" + tableHandle.getIsCloudTable());
         return new TableHandle(tableHandle.getConnectorId(), tableHandle.getConnectorHandle(), tableHandle.getTransaction(), Optional.of(newTableLayoutHandle))
-                .setReplicatedReadsCloudTableHandle(Optional.of(tableHandle.getIsCloudTable().get()), Optional.of(canReplicatedReadsCloudTable));
+                .setReplicatedReadsCloudTableHandle(Optional.of(canReplicatedReadsCloudTable), Optional.of(canReplicatedReadsCloudTable));
     }
 
     @Override

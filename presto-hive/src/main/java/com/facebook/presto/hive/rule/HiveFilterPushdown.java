@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive.rule;
 
+import com.facebook.airlift.log.Logger;
 import com.facebook.presto.common.Subfield;
 import com.facebook.presto.common.predicate.Domain;
 import com.facebook.presto.common.predicate.NullableValue;
@@ -123,6 +124,8 @@ public class HiveFilterPushdown
             Optional.empty(),
             emptyList());
 
+    private static final Logger log = Logger.get(HiveFilterPushdown.class);
+
     protected final HiveTransactionManager transactionManager;
     protected final RowExpressionService rowExpressionService;
     protected final StandardFunctionResolution functionResolution;
@@ -184,7 +187,7 @@ public class HiveFilterPushdown
     {
         checkArgument(!FALSE_CONSTANT.equals(filter), "Cannot pushdown filter that is always false");
         if (TRUE_CONSTANT.equals(filter) && currentLayoutHandle.isPresent()) {
-            return new ConnectorPushdownFilterResult(metadata.getTableLayout(session, currentLayoutHandle.get()), TRUE_CONSTANT);
+            return new ConnectorPushdownFilterResult(metadata.getTableLayout(session, currentLayoutHandle.get(), false), TRUE_CONSTANT);
         }
 
         // Split the filter into 3 groups of conjuncts:
@@ -390,10 +393,12 @@ public class HiveFilterPushdown
                 return new ValuesNode(tableScan.getSourceLocation(), idAllocator.getNextId(), tableScan.getOutputVariables(), ImmutableList.of());
             }
 
+            log.debug("HiveFilterPushdown1 - new layout = " + layout.getIsCloudTable() + "\n" + "HiveFilterPushdown1 - tableHandle = " + tableScan.getTable().getIsCloudTable());
+
             TableScanNode node = new TableScanNode(
                     tableScan.getSourceLocation(),
                     tableScan.getId(),
-                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle())),
+                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle())).setReplicatedReadsCloudTableHandle(layout.getIsCloudTable()),
                     tableScan.getOutputVariables(),
                     tableScan.getAssignments(),
                     tableScan.getTableConstraints(),
@@ -429,7 +434,7 @@ public class HiveFilterPushdown
             return new TableScanNode(
                     tableScan.getSourceLocation(),
                     tableScan.getId(),
-                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle())),
+                    new TableHandle(handle.getConnectorId(), handle.getConnectorHandle(), handle.getTransaction(), Optional.of(pushdownFilterResult.getLayout().getHandle())).setReplicatedReadsCloudTableHandle(pushdownFilterResult.getLayout().getIsCloudTable()),
                     tableScan.getOutputVariables(),
                     tableScan.getAssignments(),
                     tableScan.getTableConstraints(),

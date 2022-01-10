@@ -128,15 +128,15 @@ public abstract class DelegatingMetadataManager
     }
 
     @Override
-    public TableLayout getLayout(Session session, TableHandle handle)
+    public TableLayout getLayout(Session session, TableHandle handle, boolean isDimTableReplicated)
     {
-        return delegate.getLayout(session, handle);
+        return delegate.getLayout(session, handle, false);
     }
 
     @Override
-    public TableHandle getAlternativeTableHandle(Session session, TableHandle tableHandle, PartitioningHandle partitioningHandle)
+    public TableHandle getAlternativeTableHandle(Session session, TableHandle tableHandle, PartitioningHandle partitioningHandle, boolean isDimTableReplicated)
     {
-        return delegate.getAlternativeTableHandle(session, tableHandle, partitioningHandle);
+        return delegate.getAlternativeTableHandle(session, tableHandle, partitioningHandle, isDimTableReplicated);
     }
 
     @Override
