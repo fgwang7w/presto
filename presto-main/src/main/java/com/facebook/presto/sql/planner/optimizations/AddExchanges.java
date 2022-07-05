@@ -780,8 +780,8 @@ public class AddExchanges
                  */
                 boolean canLeftReplicate = canReplicatedRead(node.getProbe());
                 boolean canRightReplicate = canReplicatedRead(node.getBuild());
-                logger.info("\ncanLeftReplicate=" + canLeftReplicate + "canRightReplicate=" + canRightReplicate);
-                if (getEnableColocatedJoinForDimReplicateTable(session) && (canLeftReplicate || canRightReplicate) && node.getType() == JoinNode.Type.INNER) {
+                logger.info("\ncanLeftReplicate=" + canLeftReplicate + " canRightReplicate=" + canRightReplicate);
+                if (getEnableColocatedJoinForDimReplicateTable(session) && (canLeftReplicate && canRightReplicate) && node.getType() == JoinNode.Type.INNER) {
                     return planReplicatedReadsJoin(node);
                 }
                 PlanWithProperties left = node.getLeft().accept(this, PreferredProperties.any());

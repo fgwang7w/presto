@@ -360,16 +360,6 @@ public class PlanFragmenter
                 .collect(toImmutableSet());
     }
 
-    private static boolean determineReplicatedReadsSettingForJoin(PlanNode node, Optional<JoinNode.DistributionType> distributionType, JoinNode.Type joinType, Session session)
-    {
-        if (distributionType.isPresent()) {
-            if (isReplicatedReadsJoin(node, distributionType.get(), joinType, session)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static class Fragmenter
             extends SimplePlanRewriter<FragmentProperties>
     {
@@ -496,37 +486,33 @@ public class PlanFragmenter
         @Override
         public PlanNode visitJoin(JoinNode node, RewriteContext<FragmentProperties> context)
         {
-            if (!node.isCrossJoin() && determineReplicatedReadsSettingForJoin(node.getProbe(), node.getDistributionType(), node.getType(), session)) {
-                context.get().setReplicatedReadsQueue(true);
+            if (determineReplicatedReadsJoinAllowed(node, session)) {
+                if (canReplicatedRead(node.getProbe())) {
+                    context.get().setReplicatedReadsQueue(true);
+                }
+                PlanNode left = context.rewrite(node.getProbe(), context.get());
+                context.get().dequeFromReplicatedReadsQueue();
+                if (canReplicatedRead(node.getBuild())) {
+                    context.get().setReplicatedReadsQueue(true);
+                }
+                PlanNode right = context.rewrite(node.getBuild(), context.get());
+                context.get().dequeFromReplicatedReadsQueue();
+                return new JoinNode(
+                        node.getSourceLocation(),
+                        node.getId(),
+                        node.getType(),
+                        left,
+                        right,
+                        node.getCriteria(),
+                        node.getOutputVariables(),
+                        node.getFilter(),
+                        node.getLeftHashVariable(),
+                        node.getRightHashVariable(),
+                        node.getDistributionType(),
+                        node.getDynamicFilters());
             }
-            else {
-                context.get().setReplicatedReadsQueue(false);
-            }
-            PlanNode left = context.rewrite(node.getProbe(), context.get());
 
-            context.get().dequeFromReplicatedReadsQueue();
-
-            if (!node.isCrossJoin() && determineReplicatedReadsSettingForJoin(node.getBuild(), node.getDistributionType(), node.getType(), session)) {
-                context.get().setReplicatedReadsQueue(true);
-            }
-            else {
-                context.get().setReplicatedReadsQueue(false);
-            }
-            PlanNode right = context.rewrite(node.getBuild(), context.get());
-            context.get().dequeFromReplicatedReadsQueue();
-            return new JoinNode(
-                    node.getSourceLocation(),
-                    node.getId(),
-                    node.getType(),
-                    left,
-                    right,
-                    node.getCriteria(),
-                    node.getOutputVariables(),
-                    node.getFilter(),
-                    node.getLeftHashVariable(),
-                    node.getRightHashVariable(),
-                    node.getDistributionType(),
-                    node.getDynamicFilters());
+            return context.defaultRewrite(node, context.get());
         }
 
         @Override
@@ -1473,36 +1459,33 @@ public class PlanFragmenter
         @Override
         public PlanNode visitJoin(JoinNode node, RewriteContext<Context> context)
         {
-            if (!node.isCrossJoin() && determineReplicatedReadsSettingForJoin(node.getProbe(), node.getDistributionType(), node.getType(), session)) {
-                context.get().setReplicatedReadsAllowedQueue(true);
+            if (determineReplicatedReadsJoinAllowed(node, session)) {
+                if (canReplicatedRead(node.getProbe())) {
+                    context.get().setReplicatedReadsAllowedQueue(true);
+                }
+                PlanNode left = context.rewrite(node.getProbe(), context.get());
+                context.get().dequeFromReplicatedReadsAllowedQueue();
+                if (canReplicatedRead(node.getBuild())) {
+                    context.get().setReplicatedReadsAllowedQueue(true);
+                }
+                PlanNode right = context.rewrite(node.getBuild(), context.get());
+                context.get().dequeFromReplicatedReadsAllowedQueue();
+                return new JoinNode(
+                        node.getSourceLocation(),
+                        node.getId(),
+                        node.getType(),
+                        left,
+                        right,
+                        node.getCriteria(),
+                        node.getOutputVariables(),
+                        node.getFilter(),
+                        node.getLeftHashVariable(),
+                        node.getRightHashVariable(),
+                        node.getDistributionType(),
+                        node.getDynamicFilters());
             }
-            else {
-                context.get().setReplicatedReadsAllowedQueue(false);
-            }
-            PlanNode left = context.rewrite(node.getProbe(), context.get());
-            context.get().dequeFromReplicatedReadsAllowedQueue();
 
-            if (!node.isCrossJoin() && determineReplicatedReadsSettingForJoin(node.getBuild(), node.getDistributionType(), node.getType(), session)) {
-                context.get().setReplicatedReadsAllowedQueue(true);
-            }
-            else {
-                context.get().setReplicatedReadsAllowedQueue(false);
-            }
-            PlanNode right = context.rewrite(node.getBuild(), context.get());
-            context.get().dequeFromReplicatedReadsAllowedQueue();
-            return new JoinNode(
-                    node.getSourceLocation(),
-                    node.getId(),
-                    node.getType(),
-                    left,
-                    right,
-                    node.getCriteria(),
-                    node.getOutputVariables(),
-                    node.getFilter(),
-                    node.getLeftHashVariable(),
-                    node.getRightHashVariable(),
-                    node.getDistributionType(),
-                    node.getDynamicFilters());
+            return context.defaultRewrite(node, context.get());
         }
 
         @Override
@@ -1516,7 +1499,7 @@ public class PlanFragmenter
 
             // if there's a replicated read join and fragmentPartitioningHandle is Source Distribution, need to use alternative table handle.
             // that's the case of non-bucket join nonpart table, need to create a virtual bucket handle for the table partitioning
-            if (partitioning.equals(fragmentPartitioningHandle) || !isCloudTableReplicated) {
+            if (partitioning.equals(fragmentPartitioningHandle) && !isCloudTableReplicated) {
                 // do nothing if the current scan node's partitioning matches the fragment's or is compatible for replicated cloud table
                 return node;
             }
@@ -1560,19 +1543,6 @@ public class PlanFragmenter
         }
     }
 
-    private static boolean isReplicatedReadsJoin(PlanNode node, JoinNode.DistributionType distributionType, JoinNode.Type joinType, Session session)
-    {
-        if (getEnableColocatedJoinForDimReplicateTable(session) &&
-                canReplicatedRead(node) &&
-                distributionType.equals(JoinNode.DistributionType.REPLICATED) &&
-                joinType == JoinNode.Type.INNER) {
-            return true;
-        }
-        else {
-            return false;
-        }
-    }
-
     private static boolean canReplicatedRead(PlanNode node)
     {
         if (node instanceof ProjectNode) {
@@ -1591,5 +1561,18 @@ public class PlanFragmenter
     {
         TableHandle tableHandle = tableScanNode.getTable();
         return tableHandle.getIsCloudTable().isPresent() ? tableHandle.getIsCloudTable().get() : false;
+    }
+
+    private static boolean determineReplicatedReadsJoinAllowed(JoinNode joinNode, Session session)
+    {
+        if (getEnableColocatedJoinForDimReplicateTable(session) &&
+                !joinNode.isCrossJoin() &&
+                joinNode.getDistributionType().isPresent() && joinNode.getDistributionType().get().equals(JoinNode.DistributionType.REPLICATED) &&
+                joinNode.getType() == JoinNode.Type.INNER &&
+                canReplicatedRead(joinNode.getLeft()) &&
+                canReplicatedRead(joinNode.getRight())) {
+            return true;
+        }
+        return false;
     }
 }

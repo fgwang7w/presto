@@ -275,7 +275,7 @@ public class TestCanonicalPlanGenerator
                         .filter(f -> !f.isSynthetic())
                         .map(Field::getName)
                         .collect(toImmutableSet()),
-                ImmutableSet.of("connectorId", "connectorHandle", "transaction", "layout", "dynamicFilter"));
+                ImmutableSet.of("connectorId", "connectorHandle", "transaction", "layout", "dynamicFilter", "isCloudTable", "canReplicatedForColocatedBroadcastJoin"));
         assertEquals(
                 Arrays.stream(CanonicalTableHandle.class.getDeclaredFields())
                         .filter(f -> !f.isSynthetic())

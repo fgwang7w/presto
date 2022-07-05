@@ -24,6 +24,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import org.testng.annotations.Test;
 
+import static com.facebook.presto.SystemSessionProperties.ENABLE_COLOCATED_JOIN_FOR_DIM_REPLICATE_TABLE;
 import static com.facebook.presto.SystemSessionProperties.JOIN_DISTRIBUTION_TYPE;
 import static com.facebook.presto.SystemSessionProperties.JOIN_REORDERING_STRATEGY;
 import static com.facebook.presto.SystemSessionProperties.OPTIMIZE_NULLS_IN_JOINS;
@@ -80,6 +81,7 @@ public abstract class AbstractTestJoinQueries
         Session broadcastJoin = Session.builder(getSession())
                 .setSystemProperty(JOIN_DISTRIBUTION_TYPE, BROADCAST.name())
                 .setSystemProperty(JOIN_REORDERING_STRATEGY, NONE.name())
+                .setSystemProperty(ENABLE_COLOCATED_JOIN_FOR_DIM_REPLICATE_TABLE, "false")
                 .build();
 
         QueryId broadcastQueryId = queryRunner.executeWithQueryId(broadcastJoin, query).getQueryId();

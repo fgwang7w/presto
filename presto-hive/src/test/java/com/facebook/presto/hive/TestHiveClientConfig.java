@@ -168,6 +168,7 @@ public class TestHiveClientConfig
                 .setFileSplittable(true)
                 .setHudiMetadataEnabled(false)
                 .setThriftProtocol(Protocol.BINARY)
+                .setOverwriteHighBandwidthStorageForReplicatedReads(true)
                 .setThriftBufferSize(new DataSize(128, BYTE)));
     }
 
@@ -296,6 +297,7 @@ public class TestHiveClientConfig
                 .put("hive.hudi-metadata-enabled", "true")
                 .put("hive.internal-communication.thrift-transport-protocol", "COMPACT")
                 .put("hive.internal-communication.thrift-transport-buffer-size", "256B")
+                .put("hive.overwrite-high-bandwidth-storage-for-replicated-reads", "false")
                 .build();
 
         HiveClientConfig expected = new HiveClientConfig()
@@ -417,6 +419,7 @@ public class TestHiveClientConfig
                 .setUseRecordPageSourceForCustomSplit(false)
                 .setFileSplittable(false)
                 .setHudiMetadataEnabled(true)
+                .setOverwriteHighBandwidthStorageForReplicatedReads(false)
                 .setThriftProtocol(Protocol.COMPACT)
                 .setThriftBufferSize(new DataSize(256, BYTE));
 

@@ -189,7 +189,6 @@ public final class HiveQueryRunner
                     .put("hive.assume-canonical-partition-keys", "true")
                     .put("hive.collect-column-statistics-on-write", "true")
                     .put("hive.temporary-table-schema", TEMPORARY_TABLE_SCHEMA)
-                    .put("hive.overwrite-high-bandwidth-storage-for-replicated-reads", "true")
                     .build();
 
             Map<String, String> storageProperties = extraHiveProperties.containsKey("hive.storage-format") ?
