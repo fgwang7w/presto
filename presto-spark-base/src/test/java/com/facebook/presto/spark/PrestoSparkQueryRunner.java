@@ -93,6 +93,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static com.facebook.airlift.log.Level.ERROR;
 import static com.facebook.airlift.log.Level.WARN;
+import static com.facebook.presto.SystemSessionProperties.ENABLE_COLOCATED_JOIN_FOR_DIM_REPLICATE_TABLE;
 import static com.facebook.presto.spark.PrestoSparkSettingsRequirements.SPARK_EXECUTOR_CORES_PROPERTY;
 import static com.facebook.presto.spark.PrestoSparkSettingsRequirements.SPARK_TASK_CPUS_PROPERTY;
 import static com.facebook.presto.spark.classloader_interface.SparkProcessType.DRIVER;
@@ -261,6 +262,7 @@ public class PrestoSparkQueryRunner
         defaultSession = testSessionBuilder(injector.getInstance(SessionPropertyManager.class))
                 .setCatalog(defaultCatalog)
                 .setSchema("tpch")
+                .setSystemProperty(ENABLE_COLOCATED_JOIN_FOR_DIM_REPLICATE_TABLE, "false")
                 .build();
 
         transactionManager = injector.getInstance(TransactionManager.class);
