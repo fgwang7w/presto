@@ -53,6 +53,7 @@ import static com.facebook.presto.SystemSessionProperties.TASK_WRITER_COUNT;
 import static com.facebook.presto.hive.HiveQueryRunner.HIVE_CATALOG;
 import static com.facebook.presto.hive.HiveQueryRunner.TPCH_BUCKETED_SCHEMA;
 import static com.facebook.presto.hive.HiveSessionProperties.OPTIMIZED_PARTITION_UPDATE_SERIALIZATION_ENABLED;
+import static com.facebook.presto.hive.HiveSessionProperties.OVERWRITE_HIGH_BANDWIDTH_STORAGE_FOR_REPLICATED_READS;
 import static com.facebook.presto.hive.HiveSessionProperties.VIRTUAL_BUCKET_COUNT;
 import static com.facebook.presto.spi.security.SelectedRole.Type.ALL;
 import static com.facebook.presto.spi.security.SelectedRole.Type.ROLE;
@@ -457,6 +458,7 @@ public class TestHiveRecoverableExecution
                 .setSystemProperty(MAX_STAGE_RETRIES, "4")
                 .setCatalogSessionProperty(HIVE_CATALOG, VIRTUAL_BUCKET_COUNT, "16")
                 .setCatalogSessionProperty(HIVE_CATALOG, OPTIMIZED_PARTITION_UPDATE_SERIALIZATION_ENABLED, optimizedPartitionUpdateSerializationEnabled + "")
+                .setCatalogSessionProperty(HIVE_CATALOG, OVERWRITE_HIGH_BANDWIDTH_STORAGE_FOR_REPLICATED_READS, "false")
                 .setCatalog(HIVE_CATALOG)
                 .setSchema(TPCH_BUCKETED_SCHEMA)
                 .build();
