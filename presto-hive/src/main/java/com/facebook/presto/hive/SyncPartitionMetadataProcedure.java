@@ -28,6 +28,7 @@ import com.facebook.presto.spi.procedure.Procedure;
 import com.facebook.presto.spi.procedure.Procedure.Argument;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -38,8 +39,11 @@ import javax.inject.Provider;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandle;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -61,6 +65,8 @@ import static java.util.Objects.requireNonNull;
 public class SyncPartitionMetadataProcedure
         implements Provider<Procedure>
 {
+    private static final int BATCH_GET_PARTITION_BY_NAMES = 1000;
+
     public enum SyncMode
     {
         ADD, DROP, FULL
@@ -114,7 +120,15 @@ public class SyncPartitionMetadataProcedure
         SemiTransactionalHiveMetastore metastore = hiveMetadataFactory.get().getMetastore();
         SchemaTableName schemaTableName = new SchemaTableName(schemaName, tableName);
 
-        Table table = metastore.getTable(new MetastoreContext(session.getIdentity(), session.getQueryId(), session.getClientInfo(), session.getSource(), getMetastoreHeaders(session), isUserDefinedTypeEncodingEnabled(session), metastore.getColumnConverterProvider()), schemaName, tableName)
+        MetastoreContext metastoreContext = new MetastoreContext(
+                session.getIdentity(),
+                session.getQueryId(),
+                session.getClientInfo(),
+                session.getSource(),
+                getMetastoreHeaders(session),
+                isUserDefinedTypeEncodingEnabled(session),
+                metastore.getColumnConverterProvider());
+        Table table = metastore.getTable(metastoreContext, schemaName, tableName)
                 .orElseThrow(() -> new TableNotFoundException(schemaTableName));
         if (table.getPartitionColumns().isEmpty()) {
             throw new PrestoException(INVALID_PROCEDURE_ARGUMENT, "Table is not partitioned: " + schemaTableName);
@@ -127,8 +141,17 @@ public class SyncPartitionMetadataProcedure
 
         try {
             FileSystem fileSystem = hdfsEnvironment.getFileSystem(context, tableLocation);
-            List<String> partitionsInMetastore = metastore.getPartitionNames(new MetastoreContext(session.getIdentity(), session.getQueryId(), session.getClientInfo(), session.getSource(), getMetastoreHeaders(session), isUserDefinedTypeEncodingEnabled(session), metastore.getColumnConverterProvider()), schemaName, tableName)
+            List<String> partitionNamesInMetastore = metastore.getPartitionNames(metastoreContext, schemaName, tableName)
                     .orElseThrow(() -> new TableNotFoundException(schemaTableName));
+            List<String> partitionsInMetastore = new ArrayList<>(partitionNamesInMetastore.size());
+            for (List<String> batchPartitionNames : Lists.partition(partitionNamesInMetastore, BATCH_GET_PARTITION_BY_NAMES)) {
+                Map<String, Optional<Partition>> partitionsOptionalMap = metastore.getPartitionsByNames(metastoreContext, schemaName, tableName, batchPartitionNames);
+                for (Map.Entry<String, Optional<Partition>> entry : partitionsOptionalMap.entrySet()) {
+                    if (entry.getValue().isPresent()) {
+                        partitionsInMetastore.add(tableLocation.toUri().relativize(new Path(entry.getValue().get().getStorage().getLocation()).toUri()).getPath());
+                    }
+                }
+            }
             List<String> partitionsInFileSystem = listDirectory(fileSystem, fileSystem.getFileStatus(tableLocation), table.getPartitionColumns(), table.getPartitionColumns().size(), caseSensitive).stream()
                     .map(fileStatus -> fileStatus.getPath().toUri())
                     .map(uri -> tableLocation.toUri().relativize(uri).getPath())
