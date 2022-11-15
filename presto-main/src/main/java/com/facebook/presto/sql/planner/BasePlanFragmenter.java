@@ -183,6 +183,7 @@ public abstract class BasePlanFragmenter
             schedulingOrder = scheduleOrder(root);
         }
 
+        StatsAndCosts stats = statsAndCosts.getForSubplan(root);
         PlanFragment fragment = new PlanFragment(
                 fragmentId,
                 root,
@@ -193,7 +194,7 @@ public abstract class BasePlanFragmenter
                 StageExecutionDescriptor.ungroupedExecution(),
                 outputTableWriterFragment,
                 statsAndCosts.getForSubplan(root),
-                Optional.of(jsonFragmentPlan(root, fragmentVariableTypes, metadata.getFunctionAndTypeManager(), session)));
+                Optional.of(jsonFragmentPlan(root, fragmentVariableTypes, metadata.getFunctionAndTypeManager(), stats, session)));
 
         return new SubPlan(fragment, properties.getChildren());
     }
