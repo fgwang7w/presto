@@ -2483,21 +2483,6 @@ public abstract class AbstractTestQueries
         String query = "SELECT * FROM orders";
         MaterializedResult result = computeActual("EXPLAIN (TYPE LOGICAL, FORMAT GRAPHVIZ) " + query);
         assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), getGraphvizExplainPlan("EXPLAIN (TYPE LOGICAL, FORMAT GRAPHVIZ) ", query, LOGICAL));
-
-        String exepected = "digraph logical_plan {\n" +
-                "subgraph cluster_0 {\n" +
-                "label = \"SINGLE\"\n" +
-                "plannode_1[label=\"{Output[orderkey, custkey, orderstatus, totalprice, orderdate, orderpriority, clerk, shippriority, comment]|Estimates: \\{rows: 15000 (1.86MB), cpu: 1948552.00, memory: 0.00, network: 1948552.00\\}\n" +
-                "}\", style=\"rounded, filled\", shape=record, fillcolor=white];\n" +
-                "plannode_2[label=\"{ExchangeNode[GATHER]|orderkey, custkey, orderstatus, totalprice, orderdate, orderpriority, clerk, shippriority, comment|Estimates: \\{rows: 15000 (1.86MB), cpu: 1948552.00, memory: 0.00, network: 1948552.00\\}\n" +
-                "}\", style=\"rounded, filled\", shape=record, fillcolor=gold];\n" +
-                "plannode_3[label=\"{TableScan | [TableHandle \\{connectorId='hive', connectorHandle='HiveTableHandle\\{schemaName=tpch, tableName=orders, analyzePartitionValues=Optional.empty\\}', layout='Optional[tpch.orders\\{\\}]'\\}]|Estimates: \\{rows: 15000 (1.86MB), cpu: 1948552.00, memory: 0.00, network: 0.00\\}\n" +
-                "}\", style=\"rounded, filled\", shape=record, fillcolor=deepskyblue];\n" +
-                "}\n" +
-                "plannode_1 -> plannode_2;\n" +
-                "plannode_2 -> plannode_3;\n" +
-                "}\n";
-        assertEquals(getOnlyElement(result.getOnlyColumnAsSet()), exepected);
     }
 
     @Test

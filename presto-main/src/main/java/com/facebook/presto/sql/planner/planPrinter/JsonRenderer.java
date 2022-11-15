@@ -14,6 +14,7 @@
 package com.facebook.presto.sql.planner.planPrinter;
 
 import com.facebook.airlift.json.JsonCodec;
+import com.facebook.presto.cost.PlanNodeStatsEstimate;
 import com.facebook.presto.spi.SourceLocation;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
 import com.fasterxml.jackson.annotation.JsonCreator;
@@ -62,7 +63,8 @@ public class JsonRenderer
                 children,
                 node.getRemoteSources().stream()
                         .map(PlanFragmentId::toString)
-                        .collect(toImmutableList()));
+                        .collect(toImmutableList()),
+                node.getEstimatedStats());
     }
 
     public static class JsonRenderedNode
@@ -75,8 +77,10 @@ public class JsonRenderer
         private final List<JsonRenderedNode> children;
         private final List<String> remoteSources;
 
+        private final List<PlanNodeStatsEstimate> estimates;
+
         @JsonCreator
-        public JsonRenderedNode(Optional<SourceLocation> sourceLocation, String id, String name, String identifier, String details, List<JsonRenderedNode> children, List<String> remoteSources)
+        public JsonRenderedNode(Optional<SourceLocation> sourceLocation, String id, String name, String identifier, String details, List<JsonRenderedNode> children, List<String> remoteSources, List<PlanNodeStatsEstimate> estimates)
         {
             this.sourceLocation = sourceLocation;
             this.id = requireNonNull(id, "id is null");
@@ -85,6 +89,7 @@ public class JsonRenderer
             this.details = requireNonNull(details, "details is null");
             this.children = requireNonNull(children, "children is null");
             this.remoteSources = requireNonNull(remoteSources, "id is null");
+            this.estimates = requireNonNull(estimates, "estimate is null");
         }
 
         @JsonProperty
@@ -127,6 +132,12 @@ public class JsonRenderer
         public List<String> getRemoteSources()
         {
             return remoteSources;
+        }
+
+        @JsonProperty
+        public List<PlanNodeStatsEstimate> getEstimates()
+        {
+            return estimates;
         }
     }
 

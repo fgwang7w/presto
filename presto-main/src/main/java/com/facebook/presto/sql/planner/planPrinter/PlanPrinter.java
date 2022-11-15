@@ -198,11 +198,11 @@ public class PlanPrinter
         return new JsonRenderer().render(representation);
     }
 
-    public static String jsonFragmentPlan(PlanNode root, Set<VariableReferenceExpression> variables, FunctionAndTypeManager functionAndTypeManager, Session session)
+    public static String jsonFragmentPlan(PlanNode root, Set<VariableReferenceExpression> variables, FunctionAndTypeManager functionAndTypeManager, StatsAndCosts estimatedStatsAndCosts, Session session)
     {
         TypeProvider typeProvider = TypeProvider.fromVariables(variables);
 
-        return new PlanPrinter(root, typeProvider, Optional.empty(), functionAndTypeManager, StatsAndCosts.empty(), session, Optional.empty()).toJson();
+        return new PlanPrinter(root, typeProvider, Optional.empty(), functionAndTypeManager, estimatedStatsAndCosts, session, Optional.empty()).toJson();
     }
 
     public static String textLogicalPlan(PlanNode plan, TypeProvider types, FunctionAndTypeManager functionAndTypeManager, StatsAndCosts estimatedStatsAndCosts, Session session, int level)
