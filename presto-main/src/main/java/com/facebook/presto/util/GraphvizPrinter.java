@@ -185,6 +185,22 @@ public final class GraphvizPrinter
 
         return output.toString();
     }
+    public static String printDistributedFromFragments(List<PlanFragment> allFragments, Session session, FunctionAndTypeManager functionAndTypeManager)
+    {
+        PlanNodeIdGenerator idGenerator = new PlanNodeIdGenerator();
+        Map<PlanFragmentId, PlanFragment> fragmentsById = Maps.uniqueIndex(allFragments, PlanFragment::getId);
+
+        StringBuilder output = new StringBuilder();
+        output.append("digraph distributed_plan {\n");
+
+        for (PlanFragment planFragment : allFragments) {
+            printFragmentNodes(output, planFragment, idGenerator, session, functionAndTypeManager);
+            planFragment.getRoot().accept(new EdgePrinter(output, fragmentsById, idGenerator), null);
+        }
+
+        output.append("}\n");
+        return output.toString();
+    }
 
     private static void printSubPlan(
             SubPlan plan,

@@ -112,6 +112,7 @@ import io.airlift.slice.Slice;
 import io.airlift.units.Duration;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -132,6 +133,7 @@ import static com.facebook.presto.sql.planner.planPrinter.PlanNodeStatsSummarize
 import static com.facebook.presto.sql.planner.planPrinter.TextRenderer.formatDouble;
 import static com.facebook.presto.sql.planner.planPrinter.TextRenderer.formatPositions;
 import static com.facebook.presto.sql.planner.planPrinter.TextRenderer.indentString;
+import static com.facebook.presto.util.GraphvizPrinter.printDistributedFromFragments;
 import static com.google.common.base.CaseFormat.UPPER_UNDERSCORE;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
@@ -437,6 +439,16 @@ public class PlanPrinter
     public static String graphvizDistributedPlan(SubPlan plan, Session session, FunctionAndTypeManager functionAndTypeManager)
     {
         return GraphvizPrinter.printDistributed(plan, session, functionAndTypeManager);
+    }
+
+    public static String graphvizDistributedPlan(StageInfo stageInfo, Session session, FunctionAndTypeManager functionAndTypeManager)
+    {
+        List<PlanFragment> allFragments = getAllStages(Optional.of(stageInfo)).stream()
+                .map(StageInfo::getPlan)
+                .map(Optional::get)
+                .sorted(Comparator.comparing(PlanFragment::getId))
+                .collect(toImmutableList());
+        return printDistributedFromFragments(allFragments, session, functionAndTypeManager);
     }
 
     private class Visitor
