@@ -179,7 +179,7 @@ public class QueryExplainer
                 return jsonLogicalPlan(plan.getRoot(), plan.getTypes(), metadata.getFunctionAndTypeManager(), plan.getStatsAndCosts(), session);
             case DISTRIBUTED:
                 SubPlan subPlan = getDistributedPlan(session, statement, parameters, warningCollector);
-                return jsonDistributedPlan(subPlan);
+                return jsonDistributedPlan(metadata.getFunctionAndTypeManager(), subPlan);
             default:
                 throw new PrestoException(NOT_SUPPORTED, format("Unsupported explain plan type %s for JSON format", planType));
         }

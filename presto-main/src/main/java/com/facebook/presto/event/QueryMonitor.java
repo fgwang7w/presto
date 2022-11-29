@@ -407,6 +407,7 @@ public class QueryMonitor
         try {
             if (queryInfo.getOutputStage().isPresent()) {
                 return Optional.of(jsonDistributedPlan(
+                        functionAndTypeManager,
                         queryInfo.getOutputStage().get()));
             }
         }

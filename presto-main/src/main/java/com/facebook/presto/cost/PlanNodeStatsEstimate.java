@@ -24,8 +24,12 @@ import com.facebook.presto.spi.statistics.Estimate;
 import com.facebook.presto.spi.statistics.PlanStatistics;
 import com.facebook.presto.spi.statistics.PlanStatisticsWithSourceInfo;
 import com.facebook.presto.spi.statistics.SourceInfo;
+import com.facebook.presto.sql.Serialization;
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.google.common.collect.ImmutableMap;
 import org.pcollections.HashTreePMap;
 import org.pcollections.PMap;
@@ -59,12 +63,11 @@ public class PlanNodeStatsEstimate
         return UNKNOWN;
     }
 
-    @JsonCreator
     public PlanNodeStatsEstimate(
-            @JsonProperty("outputRowCount") double outputRowCount,
-            @JsonProperty("totalSize") double totalSize,
-            @JsonProperty("confident") boolean confident,
-            @JsonProperty("variableStatistics") Map<VariableReferenceExpression, VariableStatsEstimate> variableStatistics)
+             double outputRowCount,
+             double totalSize,
+             boolean confident,
+             Map<VariableReferenceExpression, VariableStatsEstimate> variableStatistics)
     {
         this(outputRowCount, totalSize, confident, HashTreePMap.from(requireNonNull(variableStatistics, "variableStatistics is null")));
     }
@@ -74,7 +77,12 @@ public class PlanNodeStatsEstimate
         this(outputRowCount, totalSize, variableStatistics, new CostBasedSourceInfo(confident));
     }
 
-    public PlanNodeStatsEstimate(double outputRowCount, double totalSize, PMap<VariableReferenceExpression, VariableStatsEstimate> variableStatistics, SourceInfo sourceInfo)
+    @JsonCreator
+    public PlanNodeStatsEstimate(
+            @JsonProperty("outputRowCount") double outputRowCount,
+            @JsonProperty("totalSize") double totalSize,
+            @JsonProperty("variableStatistics") PMap<VariableReferenceExpression, VariableStatsEstimate> variableStatistics,
+            @JsonProperty("sourceInfo") SourceInfo sourceInfo)
     {
         checkArgument(isNaN(outputRowCount) || outputRowCount >= 0, "outputRowCount cannot be negative");
         this.outputRowCount = outputRowCount;
@@ -105,6 +113,17 @@ public class PlanNodeStatsEstimate
         return sourceInfo.isConfident();
     }
 
+    // serde PMap type
+    @JsonSerialize(using = Serialization.HashTreePMapSerializer.class)
+    @JsonDeserialize(using = Serialization.HashTreePMapDeserializer.class)
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    @JsonProperty
+    public Map<VariableReferenceExpression, VariableStatsEstimate> getVariableStatistics()
+    {
+        return variableStatistics;
+    }
+
+    @JsonProperty
     public SourceInfo getSourceInfo()
     {
         return sourceInfo;
@@ -192,12 +211,6 @@ public class PlanNodeStatsEstimate
     public VariableStatsEstimate getVariableStatistics(VariableReferenceExpression variable)
     {
         return variableStatistics.getOrDefault(variable, VariableStatsEstimate.unknown());
-    }
-
-    @JsonProperty
-    public Map<VariableReferenceExpression, VariableStatsEstimate> getVariableStatistics()
-    {
-        return variableStatistics;
     }
 
     public Set<VariableReferenceExpression> getVariablesWithKnownStatistics()

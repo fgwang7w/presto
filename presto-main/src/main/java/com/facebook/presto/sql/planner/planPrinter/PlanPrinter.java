@@ -147,7 +147,7 @@ import static java.util.stream.Collectors.toList;
 public class PlanPrinter
 {
     private final PlanRepresentation representation;
-    private final FunctionAndTypeManager functionAndTypeManager;
+    private FunctionAndTypeManager functionAndTypeManager;
     private final LogicalRowExpressions logicalRowExpressions;
     private final Function<RowExpression, String> formatter;
 
@@ -195,16 +195,17 @@ public class PlanPrinter
         return new TextRenderer(verbose, level).render(representation);
     }
 
-    public String toJson()
+    public String toJson(FunctionAndTypeManager type)
     {
-        return new JsonRenderer().render(representation);
+        this.functionAndTypeManager = type;
+        return new JsonRenderer(type).render(representation);
     }
 
     public static String jsonFragmentPlan(PlanNode root, Set<VariableReferenceExpression> variables, FunctionAndTypeManager functionAndTypeManager, StatsAndCosts estimatedStatsAndCosts, Session session)
     {
         TypeProvider typeProvider = TypeProvider.fromVariables(variables);
 
-        return new PlanPrinter(root, typeProvider, Optional.empty(), functionAndTypeManager, estimatedStatsAndCosts, session, Optional.empty()).toJson();
+        return new PlanPrinter(root, typeProvider, Optional.empty(), functionAndTypeManager, estimatedStatsAndCosts, session, Optional.empty()).toJson(functionAndTypeManager);
     }
 
     public static String textLogicalPlan(PlanNode plan, TypeProvider types, FunctionAndTypeManager functionAndTypeManager, StatsAndCosts estimatedStatsAndCosts, Session session, int level)
@@ -302,21 +303,21 @@ public class PlanPrinter
             Session session,
             Optional<Map<PlanNodeId, PlanNodeStats>> stats)
     {
-        return new PlanPrinter(plan, types, stageExecutionStrategy, functionAndTypeManager, estimatedStatsAndCosts, session, stats).toJson();
+        return new PlanPrinter(plan, types, stageExecutionStrategy, functionAndTypeManager, estimatedStatsAndCosts, session, stats).toJson(functionAndTypeManager);
     }
 
-    public static String jsonDistributedPlan(StageInfo outputStageInfo)
+    public static String jsonDistributedPlan(FunctionAndTypeManager functionAndTypeManager, StageInfo outputStageInfo)
     {
         List<PlanFragment> allFragments = getAllStages(Optional.of(outputStageInfo)).stream()
                 .map(StageInfo::getPlan)
                 .map(Optional::get)
                 .collect(toImmutableList());
-        return formatJsonFragmentList(allFragments);
+        return formatJsonFragmentList(functionAndTypeManager, allFragments);
     }
 
-    public static String jsonDistributedPlan(SubPlan plan)
+    public static String jsonDistributedPlan(FunctionAndTypeManager functionAndTypeManager, SubPlan plan)
     {
-        return formatJsonFragmentList(plan.getAllFragments());
+        return formatJsonFragmentList(functionAndTypeManager, plan.getAllFragments());
     }
 
     private String formatSourceLocation(Optional<SourceLocation> sourceLocation1, Optional<SourceLocation> sourceLocation2)
@@ -337,7 +338,7 @@ public class PlanPrinter
         return "";
     }
 
-    private static String formatJsonFragmentList(List<PlanFragment> fragments)
+    private static String formatJsonFragmentList(FunctionAndTypeManager functionAndTypeManager, List<PlanFragment> fragments)
     {
         ImmutableSortedMap.Builder<PlanFragmentId, JsonPlanFragment> fragmentJsonMap = ImmutableSortedMap.naturalOrder();
         for (PlanFragment fragment : fragments) {
@@ -345,7 +346,7 @@ public class PlanPrinter
             JsonPlanFragment jsonPlanFragment = new JsonPlanFragment(fragment.getJsonRepresentation().get());
             fragmentJsonMap.put(fragmentId, jsonPlanFragment);
         }
-        return new JsonRenderer().render(fragmentJsonMap.build());
+        return new JsonRenderer(functionAndTypeManager).render(fragmentJsonMap.build());
     }
 
     private static String formatFragment(

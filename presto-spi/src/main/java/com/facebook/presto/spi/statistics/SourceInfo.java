@@ -13,10 +13,19 @@
  */
 package com.facebook.presto.spi.statistics;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+
 /**
  * Describes source of PlanStatistics.
  * We have different ways to estimate PlanStatistics like Cost based optimizer and History based optimizer.
  */
+@JsonTypeInfo(
+        use = JsonTypeInfo.Id.CLASS,
+        property = "sourceInfo")
+@JsonSubTypes({
+        @JsonSubTypes.Type(value = CostBasedSourceInfo.class),
+        @JsonSubTypes.Type(value = HistoryBasedSourceInfo.class)})
 public abstract class SourceInfo
 {
     public abstract boolean isConfident();
