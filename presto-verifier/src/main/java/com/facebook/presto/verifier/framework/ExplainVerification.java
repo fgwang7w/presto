@@ -110,6 +110,7 @@ public class ExplainVerification
         if (!Objects.equals(controlPlan.getName(), testPlan.getName())
                 || !Objects.equals(controlPlan.getIdentifier(), testPlan.getIdentifier())
                 || !Objects.equals(controlPlan.getRemoteSources(), testPlan.getRemoteSources())
+                || !Objects.equals(controlPlan.getEstimates(), testPlan.getEstimates())
                 || controlPlan.getChildren().size() != testPlan.getChildren().size()) {
             return STRUCTURE_MISMATCH;
         }

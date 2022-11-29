@@ -16,6 +16,7 @@ package com.facebook.presto.spi.relation;
 import com.facebook.presto.common.type.Type;
 import com.facebook.presto.spi.SourceLocation;
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.annotation.concurrent.Immutable;
@@ -25,6 +26,7 @@ import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
 
+@JsonInclude(JsonInclude.Include.NON_ABSENT)
 @Immutable
 public final class VariableReferenceExpression
         extends RowExpression

@@ -14,12 +14,20 @@
 package com.facebook.presto.sql.planner.planPrinter;
 
 import com.facebook.airlift.json.JsonCodec;
+import com.facebook.airlift.json.JsonCodecFactory;
+import com.facebook.airlift.json.JsonObjectMapperProvider;
 import com.facebook.presto.cost.PlanNodeStatsEstimate;
+import com.facebook.presto.metadata.FunctionAndTypeManager;
 import com.facebook.presto.spi.SourceLocation;
+import com.facebook.presto.spi.relation.VariableReferenceExpression;
+import com.facebook.presto.sql.Serialization;
 import com.facebook.presto.sql.planner.plan.PlanFragmentId;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonRawValue;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.google.common.collect.ImmutableMap;
 
 import java.util.List;
 import java.util.Map;
@@ -31,18 +39,53 @@ import static java.util.Objects.requireNonNull;
 public class JsonRenderer
         implements Renderer<String>
 {
-    private static final JsonCodec<JsonRenderedNode> CODEC = JsonCodec.jsonCodec(JsonRenderedNode.class);
-    private static final JsonCodec<Map<PlanFragmentId, JsonPlanFragment>> PLAN_MAP_CODEC = JsonCodec.mapJsonCodec(PlanFragmentId.class, JsonPlanFragment.class);
+    private static JsonCodec<JsonRenderedNode> codec = JsonCodec.jsonCodec(JsonRenderedNode.class);
+    private static JsonCodec<Map<PlanFragmentId, JsonPlanFragment>> planMapCodec = JsonCodec.mapJsonCodec(PlanFragmentId.class, JsonPlanFragment.class);
+
+    private FunctionAndTypeManager functionAndTypeManager;
+
+    public JsonRenderer(FunctionAndTypeManager functionAndTypeManager)
+    {
+        this.functionAndTypeManager = functionAndTypeManager;
+
+        JsonObjectMapperProvider provider = new JsonObjectMapperProvider();
+        provider.get().enable(SerializationFeature.INDENT_OUTPUT);
+        provider.get().enableDefaultTypingAsProperty(ObjectMapper.DefaultTyping.JAVA_LANG_OBJECT, "@type");
+        provider.setKeyDeserializers(ImmutableMap.of(VariableReferenceExpression.class, new Serialization.VariableReferenceExpressionDeserializer(functionAndTypeManager)));
+
+        JsonCodecFactory codecFactory = new JsonCodecFactory(provider, true);
+        this.codec = codecFactory.jsonCodec(JsonRenderedNode.class);
+        this.planMapCodec = codecFactory.mapJsonCodec(PlanFragmentId.class, JsonPlanFragment.class);
+
+        /*
+        JsonCodecFactory jsonCodecFactory = new JsonCodecFactory(() -> new JsonObjectMapperProvider().get().registerModule(
+                new SimpleModule()
+                        // add serde methods for handling VariableReferenceExpression
+                        .addSerializer(VariableReferenceExpression.class, new VariableStatsSerdeAdaptor.VariableStatsSerializer())
+                        .addKeyDeserializer(VariableReferenceExpression.class, new VariableStatsSerdeAdaptor.VariableStatsVariableReferenceExpressionDeserializer(functionAndTypeManager))));
+        CODEC = jsonCodecFactory.jsonCodec(JsonRenderedNode.class);
+        PLAN_MAP_CODEC = jsonCodecFactory.mapJsonCodec(PlanFragmentId.class, JsonPlanFragment.class);
+
+         */
+    }
 
     @Override
     public String render(PlanRepresentation plan)
     {
-        return CODEC.toJson(renderJson(plan, plan.getRoot()));
+        JsonRenderedNode node = renderJson(plan, plan.getRoot());
+        String out = "";
+        try {
+            out = codec.toJson(node);
+        }
+        catch (Exception ex) {
+            System.out.println(ex.getCause().toString());
+        }
+        return out;
     }
 
     public String render(Map<PlanFragmentId, JsonPlanFragment> fragmentJsonMap)
     {
-        return PLAN_MAP_CODEC.toJson(fragmentJsonMap);
+        return planMapCodec.toJson(fragmentJsonMap);
     }
 
     private JsonRenderedNode renderJson(PlanRepresentation plan, NodeRepresentation node)
@@ -76,11 +119,18 @@ public class JsonRenderer
         private final String details;
         private final List<JsonRenderedNode> children;
         private final List<String> remoteSources;
-
         private final List<PlanNodeStatsEstimate> estimates;
 
         @JsonCreator
-        public JsonRenderedNode(Optional<SourceLocation> sourceLocation, String id, String name, String identifier, String details, List<JsonRenderedNode> children, List<String> remoteSources, List<PlanNodeStatsEstimate> estimates)
+        public JsonRenderedNode(
+                @JsonProperty("source") Optional<SourceLocation> sourceLocation,
+                @JsonProperty("id") String id,
+                @JsonProperty("name") String name,
+                @JsonProperty("identifier") String identifier,
+                @JsonProperty("details") String details,
+                @JsonProperty("children") List<JsonRenderedNode> children,
+                @JsonProperty("remoteSources") List<String> remoteSources,
+                @JsonProperty("estimates") List<PlanNodeStatsEstimate> estimates)
         {
             this.sourceLocation = sourceLocation;
             this.id = requireNonNull(id, "id is null");
