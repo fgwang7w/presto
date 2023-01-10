@@ -35,6 +35,8 @@ public class ConnectorTableLayout
     private final List<LocalProperty<ColumnHandle>> localProperties;
     private final Optional<RowExpression> remainingPredicate;
 
+    private final boolean isReplicatedReads;
+
     public ConnectorTableLayout(ConnectorTableLayoutHandle handle)
     {
         this(handle,
@@ -44,7 +46,8 @@ public class ConnectorTableLayout
                 Optional.empty(),
                 Optional.empty(),
                 emptyList(),
-                Optional.empty());
+                Optional.empty(),
+                false);
     }
 
     public ConnectorTableLayout(
@@ -56,7 +59,7 @@ public class ConnectorTableLayout
             Optional<DiscretePredicates> discretePredicates,
             List<LocalProperty<ColumnHandle>> localProperties)
     {
-        this(handle, columns, predicate, tablePartitioning, streamPartitioningColumns, discretePredicates, localProperties, Optional.empty());
+        this(handle, columns, predicate, tablePartitioning, streamPartitioningColumns, discretePredicates, localProperties, Optional.empty(), false);
     }
 
     public ConnectorTableLayout(
@@ -67,7 +70,8 @@ public class ConnectorTableLayout
             Optional<Set<ColumnHandle>> streamPartitioningColumns,
             Optional<DiscretePredicates> discretePredicates,
             List<LocalProperty<ColumnHandle>> localProperties,
-            Optional<RowExpression> remainingPredicate)
+            Optional<RowExpression> remainingPredicate,
+            boolean isReplicatedReads)
     {
         requireNonNull(handle, "handle is null");
         requireNonNull(columns, "columns is null");
@@ -77,6 +81,7 @@ public class ConnectorTableLayout
         requireNonNull(discretePredicates, "discretePredicates is null");
         requireNonNull(localProperties, "localProperties is null");
         requireNonNull(remainingPredicate, "remainingPredicate is null");
+        requireNonNull(isReplicatedReads, "isReplicatedReads is null");
 
         this.handle = handle;
         this.columns = columns;
@@ -86,6 +91,7 @@ public class ConnectorTableLayout
         this.discretePredicates = discretePredicates;
         this.localProperties = localProperties;
         this.remainingPredicate = remainingPredicate;
+        this.isReplicatedReads = isReplicatedReads;
     }
 
     public ConnectorTableLayoutHandle getHandle()
@@ -166,6 +172,19 @@ public class ConnectorTableLayout
         return localProperties;
     }
 
+    /**
+     *
+     * A Cloud Table is identified as eligible to use replicated-reads for a broadcast join
+     * <p>
+     *     If the cloud table is stored in a high bandwdith storage media e.g. AWS S3,
+     *     this table may be accessed by replicated-reads by each worker to co-locate join operation
+     * </p>
+     */
+    public boolean getIsReplicatedReads()
+    {
+        return isReplicatedReads;
+    }
+
     @Override
     public int hashCode()
     {
@@ -188,6 +207,7 @@ public class ConnectorTableLayout
                 && Objects.equals(this.discretePredicates, other.discretePredicates)
                 && Objects.equals(this.streamPartitioningColumns, other.streamPartitioningColumns)
                 && Objects.equals(this.tablePartitioning, other.tablePartitioning)
-                && Objects.equals(this.localProperties, other.localProperties);
+                && Objects.equals(this.localProperties, other.localProperties)
+                && Objects.equals(this.isReplicatedReads, other.isReplicatedReads);
     }
 }
