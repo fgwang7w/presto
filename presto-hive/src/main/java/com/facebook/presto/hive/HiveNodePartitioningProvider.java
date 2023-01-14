@@ -72,7 +72,7 @@ public class HiveNodePartitioningProvider
         NodeSelectionStrategy nodeSelectionStrategy = getNodeSelectionStrategy(session);
         int bucketCount = handle.getBucketCount();
         if (handle.isReplicatedReadsTable()) {
-            // for cloud table with replicated reads, we will apply node affinity policy to available nodes for replicate reads across all workers
+            // for replicated reads, we will apply node affinity policy to available nodes across all workers
             nodeSelectionStrategy = SOFT_AFFINITY;
             bucketCount = sortedNodes.size();
         }

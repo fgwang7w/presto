@@ -174,10 +174,12 @@ public class ConnectorTableLayout
 
     /**
      *
-     * A Cloud Table is identified as eligible to use replicated-reads for a broadcast join
+     * An identifier bit to mark eligibility for using replicated-reads strategy for a broadcast join
      * <p>
-     *     If the cloud table is stored in a high bandwdith storage media e.g. AWS S3,
-     *     this table may be accessed by replicated-reads by each worker to co-locate join operation
+     *     If the type of storage is identified as a high bandwdith storage media e.g. AWS S3,
+     *     this table may be accessed by replicated-reads by each worker to co-locate join operation.
+     *
+     *     This works for join operation only. No effects for a single table access.
      * </p>
      */
     public boolean getIsReplicatedReads()

@@ -63,7 +63,7 @@ public interface NodeSelector
     /**
      * Identifies the nodes for running the specified split.
      *
-     * @param split cloud table single split. when a table is using replicated reads, single split need assign to multi node as hash table split
+     * @param split when a table is using replicated reads, single split needs to assign to multi node as hash table split
      * @return a multimap from node to split, multi node key to single split
      */
     SplitPlacementResult replicatedReadsComputeAssignments(Split split, List<RemoteTask> existingTasks, BucketNodeMap partitioning);
